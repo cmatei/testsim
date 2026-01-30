@@ -16,6 +16,7 @@
 #include <string>
 #include <complex>
 #include <memory>
+#include <mutex>
 
 // Forward declaration for RtAudio
 class RtAudio;
@@ -158,6 +159,9 @@ private:
 
 	// RtAudio handle
 	RtAudio *rtaudio;
+
+	// Thread synchronization for audio callback (mutable for const member functions)
+	mutable std::mutex audio_mutex;
 };
 
 #endif

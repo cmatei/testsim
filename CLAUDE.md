@@ -243,6 +243,9 @@ The `station::get_buffer()` method provides audio data in chunks, managing the s
 **Bug Fixes Applied:**
 - MovAvg buffer size corrected from `bufsize + navg - 1` to `bufsize + navg`
 - This fix applies to both real and complex-valued moving average filters
+- `station::get_buffer()` buffer overflow fixed: changed `std::max` to `std::min` on line 81
+  - Bug was causing crashes after ~3 seconds when audio buffer copy exceeded vector bounds
+  - Loop was attempting to read beyond `envelope.size()` and write beyond `buffer` capacity
 
 **Future Enhancements (Optional):**
 - Prefix database for call sign geography

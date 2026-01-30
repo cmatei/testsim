@@ -66,7 +66,7 @@ std::vector<double> Modulator::modulate(std::vector<std::complex<double>> buf)
 
 	assert(bufsize == buf.size());
 
-	res.resize(bufsize);
+	res.reserve(bufsize);  // Reserve space instead of resize to avoid double allocation
 
 	for (auto i = 0; i < bufsize; i++) {
 		res.push_back(std::imag(ex[i] * buf[i]));

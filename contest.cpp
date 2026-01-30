@@ -143,6 +143,8 @@ void Contest::setPitch(float pitch)
 
 void Contest::setCall(const std::string &call)
 {
+	std::lock_guard<std::mutex> lock(audio_mutex);
+
 	_call = call;
 	if (me != nullptr) {
 		me->mycall = call;
@@ -151,6 +153,8 @@ void Contest::setCall(const std::string &call)
 
 void Contest::setWpm(int wpm)
 {
+	std::lock_guard<std::mutex> lock(audio_mutex);
+
 	_wpm = wpm;
 	if (me != nullptr) {
 		me->wpm = wpm;
@@ -176,6 +180,8 @@ double Contest::rfgfun(double a0, double a1)
 
 void Contest::getAudio(float *outdata, unsigned int nframes)
 {
+	std::lock_guard<std::mutex> lock(audio_mutex);
+
 	if (nframes != _bufsize) {
 		std::cerr << "Warning: buffer size mismatch in getAudio" << std::endl;
 		return;
@@ -333,6 +339,8 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 
 int Contest::dxCount() const
 {
+	std::lock_guard<std::mutex> lock(audio_mutex);
+
 	int count = 0;
 	for (auto s : stations) {
 		DxStation *dx = dynamic_cast<DxStation*>(s);
@@ -345,6 +353,8 @@ int Contest::dxCount() const
 
 void Contest::onMeStartedSending()
 {
+	std::lock_guard<std::mutex> lock(audio_mutex);
+
 	for (auto s : stations) {
 		s->processEvent(station_event::mestarted);
 	}
@@ -352,6 +362,8 @@ void Contest::onMeStartedSending()
 
 void Contest::onMeFinishedSending()
 {
+	std::lock_guard<std::mutex> lock(audio_mutex);
+
 	// Create new calling stations in pileup mode
 	if (mode != RunMode::single && mode != RunMode::single_qsonr) {
 		bool should_create = false;
