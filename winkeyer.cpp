@@ -495,7 +495,7 @@ void WinKeyerServer::poll()
 // ===== CwdaemonServer Implementation =====
 
 CwdaemonServer::CwdaemonServer(int port)
-	: current_wpm(24), current_tone(800), current_weight(0), ptt_state(false)
+	: current_wpm(30), current_tone(800), current_weight(0), ptt_state(false)
 {
 	transport = std::make_unique<UdpTransport>(port);
 }
@@ -552,105 +552,167 @@ void CwdaemonServer::processMessage(const unsigned char *data, size_t len)
 void CwdaemonServer::processEscCommand(unsigned char cmd, const unsigned char *data, size_t len, size_t &pos)
 {
 	switch (cmd) {
-		case '0': {
-			// Reset to defaults
-			current_wpm = 24;
-			current_tone = 800;
-			current_weight = 0;
-			ptt_state = false;
+	case '0': {
+		// Reset to defaults
+		current_wpm = 24;
+		current_tone = 800;
+		current_weight = 50;
+		ptt_state = false;
+		if (onSpeedChange) {
+			onSpeedChange(current_wpm);
+		}
+		if (onPttChange) {
+			onPttChange(false);
+		}
+		std::cout << "cwdaemon: Reset to defaults" << std::endl;
+		break;
+	}
+
+	case '2': {
+		// Set speed
+		int wpm = 0;
+		while (pos < len) {
+			wpm = wpm * 10 + data[pos++] - '0';
+		}
+
+		if (wpm >= 5 && wpm <= 60) {
+			current_wpm = wpm;
 			if (onSpeedChange) {
-				onSpeedChange(current_wpm);
+				onSpeedChange(wpm);
 			}
-			if (onPttChange) {
-				onPttChange(false);
-			}
-			std::cout << "cwdaemon: Reset to defaults" << std::endl;
-			break;
+			std::cout << "cwdaemon: Speed set to " << wpm << " WPM" << std::endl;
+		}
+		break;
+	}
+
+	case '3': {
+		int freq = 0;
+		while (pos < len) {
+			freq = freq * 10 + data[pos++] - '0';
+		}
+		current_tone = freq;
+		// Ignore for simulator (no sidetone control)
+		std::cout << "cwdaemon: sidetone freq " << freq << std::endl;
+		break;
+	}
+
+	case '4': {
+		// Abort message
+		if (onAbort) {
+			onAbort();
+		}
+		std::cout << "cwdaemon: Abort message" << std::endl;
+		sendReply();
+		break;
+	}
+
+	case '5': {
+		pos = len;
+		std::cout << "cwdaemon: Exit, ignored" << std::endl;
+		break;
+	}
+
+	case '6': {
+		pos = len;
+		std::cout << "cwdaemon: Set Uninterruptible, ignored" << std::endl;
+		break;
+	}
+
+	case '7': {
+		int weight = 0;
+		while (pos < len) {
+			weight = weight * 10 + data[pos++] - '0';
+		}
+		current_weight = weight;
+		std::cout << "cwdaemon: weight " << weight << std::endl;
+		break;
+	}
+
+	case '8': {
+		pos = len;
+		std::cout << "cwdaemon: Set Device, ignored" << std::endl;
+		break;
+	}
+
+	case '9': {
+		pos = len;
+		std::cout << "cwdaemon: Set Port, ignored" << std::endl;
+		break;
+	}
+
+	case 'a': {
+		int state = 0;
+		while (pos < len) {
+			state = state * 10 + data[pos++] - '0';
 		}
 
-		case '2': {
-			// Set speed
-			if (pos < len) {
-				int wpm = data[pos++];
-				if (wpm >= 5 && wpm <= 60) {
-					current_wpm = wpm;
-					if (onSpeedChange) {
-						onSpeedChange(wpm);
-					}
-					std::cout << "cwdaemon: Speed set to " << wpm << " WPM" << std::endl;
-				}
-			}
-			break;
+		ptt_state = (state != 0);
+		if (onPttChange) {
+			onPttChange(ptt_state);
+		}
+		std::cout << "cwdaemon: PTT " << (ptt_state ? "ON" : "OFF") << std::endl;
+		break;
+	}
+
+	case 'b': {
+		pos = len;
+		std::cout << "cwdaemon: SSB ignored" << std::endl;
+		break;
+	}
+
+	case 'c': {
+		// Tune for N seconds
+		if (pos < len) {
+			int secs = data[pos++];
+			std::cout << "cwdaemon: Tune for " << secs << " seconds (ignored)" << std::endl;
+			// Could trigger PTT for tune mode, but we ignore this for simulator
+		}
+		break;
+	}
+
+	case 'd': {
+		int delay = 0;
+		while (pos < len) {
+			delay = delay * 10 + data[pos++] - '0';
 		}
 
-		case '3': {
-			// Set sidetone frequency
-			if (pos < len) {
-				int freq = data[pos++];
-				current_tone = freq;
-				// Ignore for simulator (no sidetone control)
-			}
-			break;
-		}
+		std::cout << "cwdaemon: set PTT delay " << delay << " ignored" << std::endl;
+		break;
+	}
 
-		case '4': {
-			// Abort message
-			if (onAbort) {
-				onAbort();
-			}
-			std::cout << "cwdaemon: Abort message" << std::endl;
-			sendReply();
-			break;
-		}
+	case 'e': {
+		pos = len;
+		std::cout << "cwdaemon: bandindex, ignored" << std::endl;
+		break;
+	}
 
-		case '7': {
-			// Set weighting
-			if (pos < len) {
-				int weight = static_cast<signed char>(data[pos++]);
-				current_weight = weight;
-				// Ignore for simulator
-			}
-			break;
-		}
+	case 'f': {
+		pos = len;
+		std::cout << "cwdaemon: set audio system, ignored" << std::endl;
+		break;
+	}
 
-		case 'a': {
-			// PTT control
-			if (pos < len) {
-				int state = data[pos++];
-				ptt_state = (state != 0);
-				if (onPttChange) {
-					onPttChange(ptt_state);
-				}
-				std::cout << "cwdaemon: PTT " << (ptt_state ? "ON" : "OFF") << std::endl;
-			}
-			break;
-		}
+	case 'g': {
+		pos = len;
+		std::cout << "cwdaemon: set audio volume, ignored" << std::endl;
+		break;
+	}
 
-		case 'c': {
-			// Tune for N seconds
-			if (pos < len) {
-				int secs = data[pos++];
-				std::cout << "cwdaemon: Tune for " << secs << " seconds (ignored)" << std::endl;
-				// Could trigger PTT for tune mode, but we ignore this for simulator
-			}
-			break;
+	case 'h': {
+		// Set reply text
+		reply_text.clear();
+		while (pos < len && data[pos] != ESC) {
+			reply_text += static_cast<char>(data[pos++]);
 		}
+		std::cout << "cwdaemon: Reply text set: " << reply_text << std::endl;
+		break;
+	}
 
-		case 'h': {
-			// Set reply text
-			reply_text.clear();
-			while (pos < len && data[pos] != ESC) {
-				reply_text += static_cast<char>(data[pos++]);
-			}
-			std::cout << "cwdaemon: Reply text set: " << reply_text << std::endl;
-			break;
-		}
-
-		default: {
-			// Unknown command
-			std::cout << "cwdaemon: Unknown command ESC-" << cmd << std::endl;
-			break;
-		}
+	default: {
+		// Unknown command
+		std::cout << "cwdaemon: Unknown command ESC-" << cmd << std::endl;
+		break;
+	}
 	}
 }
 

@@ -54,6 +54,11 @@ station::station(RNG *rng_, Keyer *keyer_, size_t bufsize_, size_t rate_)
 
 void station::set_pitch(float pitch_)
 {
+	if (pitch_ < 300.0)
+		pitch_ = 300.0;
+	if (pitch_ > 1200.0)
+		pitch_ = 1200.0;
+
 	pitch = pitch_;
 	dphi = 2.0 * M_PI * pitch / rate;
 	fbfo = 0.0;

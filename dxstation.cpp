@@ -51,6 +51,7 @@ DxStation::DxStation(RNG *rng, Keyer *keyer, CallList *callList, station *cqstn_
 
 	// Set pitch with random variation (normal distribution around 0, ±150 Hz, wrapped to ±300)
 	double pitch_offset = rng->normal(0.0, 150.0);
+	printf("pitch_offset = %.2g\n", pitch_offset);
 	while (pitch_offset > 300.0) pitch_offset -= 600.0;
 	while (pitch_offset < -300.0) pitch_offset += 600.0;
 	this->set_pitch(500.0 + pitch_offset);

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **CW (Morse code) contest simulator**. The application (Contest Simulator) simulates amateur radio stations participating in contests, generating Morse code audio signals with realistic characteristics like QSB (fading), timing variations, and signal processing.
 
-**Architecture**: The simulator operates as a **virtual contest radio** controlled via **WinKeyer3 protocol**, allowing operators to use their preferred contest logging software (N1MM+, Win-Test, etc.) while practicing against simulated pile-ups.
+**Architecture**: The simulator operates as a **virtual contest radio** controlled via **WinKeyer3** or **cwdaemon** protocols, allowing operators to use their preferred contest logging software (N1MM+, Win-Test, TLF, etc.) while practicing against simulated pile-ups.
 
 **Source Material**: Based on Morse Runner by VE3NEA, licensed under GPL v3.
 
@@ -25,7 +25,7 @@ This is a **CW (Morse code) contest simulator**. The application (Contest Simula
 - QrmStation (`qrmstation.h`, `qrmstation.cpp`) - Station interference simulation
 - MyStation (`mystation.h`, `mystation.cpp`) - User's station with dynamic call updates
 - Contest class (`contest.h`, `contest.cpp`) - Core orchestrator with audio mixing and RtAudio integration
-- WinKeyer3 interface (`winkeyer.h`, `winkeyer.cpp`) - Serial protocol for logger integration
+- Network keyer interface (`winkeyer.h`, `winkeyer.cpp`) - WinKeyer3 (TCP) and cwdaemon (UDP) protocols for logger integration
 - CLI application (`testsim_daemon.cpp`) - Production daemon
 - Configuration file handling (INI reader/writer)
 
@@ -127,6 +127,7 @@ gcc -o gentables gentables.c -lm
 
 **MyStation** (`mystation.h`, `mystation.cpp`)
 - User's station implementation
+- Message type detection: parses outgoing text to guess message type (CQ, TU, exchange, AGN, etc.) so DxOperator state machines can react appropriately via `Contest::onMeFinishedSending()`
 - Message piece splitting on `<his>` placeholders for dynamic call updates
 - Real-time call sign updates while transmitting
 - Abort functionality for stopping mid-transmission
@@ -255,7 +256,7 @@ The `station::get_buffer()` method provides audio data in chunks, managing the s
   - Bug was causing crashes after ~3 seconds when audio buffer copy exceeded vector bounds
   - Loop was attempting to read beyond `envelope.size()` and write beyond `buffer` capacity
 - `Modulator::modulate()` fixed: changed `resize(bufsize)` to `reserve(bufsize)` to prevent double-size output vector when combined with `push_back`
-- Thread safety: added `std::mutex` to Contest class protecting shared state accessed from both the RtAudio callback thread and the main thread (`getAudio()`, `dxCount()`, `onMeStartedSending()`, `onMeFinishedSending()`, `setCall()`, `setWpm()`, `time()`)
+- Thread safety: added `std::mutex` to Contest class protecting shared state accessed from both the RtAudio callback thread and the main thread (`getAudio()`, `dxCount()`, `setCall()`, `setWpm()`, `time()`). Note: mutex locks in `onMeStartedSending()` and `onMeFinishedSending()` are currently disabled
 - `Contest::setTqrm()` integer division fix: `_bufsize / _rate / _tqrm` (all integers) always truncated to 0, preventing QRM from ever triggering; fixed with float cast
 - `RNG::integers()` off-by-one: `random()` returning exactly 1.0 could produce `high` as result, causing out-of-bounds array access; added clamp to `high - 1`
 - `Contest::time()` added mutex lock for thread safety

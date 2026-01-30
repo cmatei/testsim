@@ -1,18 +1,11 @@
 #include "mystation.h"
+#include "contest.h"
 #include <algorithm>
-
-// Forward declaration of Contest methods we need
-// In the full implementation, this would be in contest.h
-class Contest {
-public:
-	virtual void onMeStartedSending() = 0;
-	virtual void onMeFinishedSending() = 0;
-};
 
 MyStation::MyStation(RNG *rng, Keyer *keyer, Contest *contest_,
                      const std::string &myCall, float pitch_, int wpm_,
                      size_t bufsize, size_t rate)
-	: station(rng, keyer, bufsize, rate), contest(contest_), app(nullptr)
+	: station(rng, keyer, bufsize, rate), contest(contest_)
 {
 	this->mycall = myCall;
 	this->nr = 1;
@@ -55,10 +48,48 @@ void MyStation::abortSend()
 
 void MyStation::sendText(const std::string &msg)
 {
+	size_t pos;
+
+	// FIXME: guess message type here and add to msgs, so dxstations
+	// can processEvent in Contest::onMeFinishedSending()
+	msgs.clear();
+	if ((msg.find("CQ ") != std::string::npos) ||
+	    (msg.find("TEST ") != std::string::npos)) {
+		msgs.push_back(station_message::cq);
+	}
+
+	if (msg.find("5NN ") != std::string::npos) {
+		hiscall = msg.substr(0, msg.find(" "));
+		msgs.push_back(station_message::hiscall);
+		msgs.push_back(station_message::nr);
+	}
+
+	if (msg == "TU" || (msg.rfind("TU ", 0) != std::string::npos)) {
+		msgs.push_back(station_message::tu);
+	}
+
+	if (msg.rfind(" TU") != std::string::npos) {
+		hiscall = msg.substr(0, msg.find(" "));
+		msgs.push_back(station_message::hiscall);
+		msgs.push_back(station_message::tu);
+	}
+
+	if (msg.rfind("?", 0) != std::string::npos) {
+		msgs.push_back(station_message::qm);
+	}
+
+	if (msg.rfind("NR?", 0) != std::string::npos) {
+		msgs.push_back(station_message::nrqm);
+	}
+
+	if (msg.rfind("AGN", 0) != std::string::npos) {
+		msgs.push_back(station_message::agn);
+	}
+
 	std::string remaining = msg;
 
 	// Split message on '<his>' placeholders
-	size_t pos = remaining.find("<his>");
+	pos = remaining.find("<his>");
 	while (pos != std::string::npos) {
 		// Add text before '<his>' if any
 		if (pos != 0) {
@@ -116,9 +147,6 @@ const std::vector<float> &MyStation::get_buffer()
 
 			if (!pieces.empty()) {
 				sendNextPiece();
-
-				// Notify app to advance (if app is set)
-				// This would be used for UI updates
 			}
 		}
 	}

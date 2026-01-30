@@ -147,7 +147,7 @@ void Contest::setPitch(float pitch)
 
 void Contest::setCall(const std::string &call)
 {
-	std::lock_guard<std::mutex> lock(audio_mutex);
+//	std::lock_guard<std::mutex> lock(audio_mutex);
 
 	_call = call;
 	if (me != nullptr) {
@@ -157,7 +157,7 @@ void Contest::setCall(const std::string &call)
 
 void Contest::setWpm(int wpm)
 {
-	std::lock_guard<std::mutex> lock(audio_mutex);
+//	std::lock_guard<std::mutex> lock(audio_mutex);
 
 	_wpm = wpm;
 	if (me != nullptr) {
@@ -343,7 +343,7 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 
 int Contest::dxCount() const
 {
-	std::lock_guard<std::mutex> lock(audio_mutex);
+//	std::lock_guard<std::mutex> lock(audio_mutex);
 
 	int count = 0;
 	for (auto s : stations) {
@@ -357,7 +357,7 @@ int Contest::dxCount() const
 
 void Contest::onMeStartedSending()
 {
-	std::lock_guard<std::mutex> lock(audio_mutex);
+//	std::lock_guard<std::mutex> lock(audio_mutex);
 
 	for (auto s : stations) {
 		s->processEvent(station_event::mestarted);
@@ -366,7 +366,7 @@ void Contest::onMeStartedSending()
 
 void Contest::onMeFinishedSending()
 {
-	std::lock_guard<std::mutex> lock(audio_mutex);
+//	std::lock_guard<std::mutex> lock(audio_mutex);
 
 	// Create new calling stations in pileup mode
 	if (mode != RunMode::single && mode != RunMode::single_qsonr) {
@@ -466,7 +466,7 @@ void Contest::stop()
 
 std::tuple<int, int, int> Contest::time() const
 {
-	std::lock_guard<std::mutex> lock(audio_mutex);
+//	std::lock_guard<std::mutex> lock(audio_mutex);
 	int s = static_cast<int>(bufcount * _bufsize / _rate);
 	int m = s / 60;
 	s = s % 60;

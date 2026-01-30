@@ -31,9 +31,6 @@ public:
 	void abortSend();
 	bool updateCallInMessage(const std::string &call);
 
-	// App pointer for UI updates (optional)
-	void *app;
-
 private:
 	void sendNextPiece();
 
