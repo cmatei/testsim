@@ -242,6 +242,12 @@ void DxOperator::msgReceived(const std::vector<station_message> &msgs)
 		}
 	}
 
+	// NeedQso timeout with no reply: retry the call (patience permitting)
+	if (state == OperatorState::NeedQso && msgs.size() == 1 && contains(station_message::nomsg)) {
+		decPatience();
+		return;
+	}
+
 	// Non-lids give up on garbage
 	if (!lids && msgs.size() == 1 && contains(station_message::nomsg)) {
 		state = OperatorState::NeedPrevEnd;
