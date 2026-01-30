@@ -2,7 +2,7 @@
 #include <string>
 #include <csignal>
 #include <unistd.h>
-#include <cstring>
+#include <memory>
 
 #include "contest.h"
 #include "winkeyer.h"
@@ -23,18 +23,19 @@ void signal_handler(int signum)
 
 void print_usage(const char *prog)
 {
-	std::cout << "Contest Simulator - WinKeyer3 Mode\n";
+	std::cout << "Contest Simulator - WinKeyer3 Network Mode\n";
 	std::cout << "Usage: " << prog << " [options]\n\n";
 	std::cout << "Options:\n";
-	std::cout << "  --serial <device>    Serial port for WinKeyer3 (default: /dev/ttyVK0)\n";
+	std::cout << "  --port <port>        TCP port for WinKeyer3 (default: 7890)\n";
 	std::cout << "  --config <file>      Configuration file (default: none, uses defaults)\n";
 	std::cout << "  --help               Show this help\n\n";
-	std::cout << "Virtual Serial Port Setup:\n";
-	std::cout << "  To create a virtual serial port pair:\n";
-	std::cout << "    socat -d -d pty,raw,echo=0,link=/tmp/logger pty,raw,echo=0,link=/tmp/testsim\n";
-	std::cout << "  Then:\n";
-	std::cout << "    - Point your contest logger to /tmp/logger\n";
-	std::cout << "    - Run: testsim --serial /tmp/testsim\n\n";
+	std::cout << "Network Mode:\n";
+	std::cout << "  Contest Simulator runs a WinKeyer3 TCP server.\n";
+	std::cout << "  Configure your logger to connect to: localhost:<port>\n";
+	std::cout << "  Some loggers may call this 'Network WinKeyer' or 'TCP WinKeyer'\n\n";
+	std::cout << "Examples:\n";
+	std::cout << "  " << prog << " --port 7890\n";
+	std::cout << "  " << prog << " --port 7890 --config contest.ini\n\n";
 	std::cout << "Audio Routing:\n";
 	std::cout << "  Configure your logger to use 'pulse' or system default audio input\n";
 	std::cout << "  The simulator will output to the default audio device\n\n";
@@ -59,7 +60,7 @@ void print_status(Contest *contest, WinKeyerServer *wk)
 
 int main(int argc, char **argv)
 {
-	std::string serial_port = "/dev/ttyVK0";
+	int tcp_port = 7890;  // Default port
 	std::string config_file;
 
 	// Parse command line arguments
@@ -68,8 +69,8 @@ int main(int argc, char **argv)
 		if (arg == "--help" || arg == "-h") {
 			print_usage(argv[0]);
 			return 0;
-		} else if (arg == "--serial" && i + 1 < argc) {
-			serial_port = argv[++i];
+		} else if (arg == "--port" && i + 1 < argc) {
+			tcp_port = std::stoi(argv[++i]);
 		} else if (arg == "--config" && i + 1 < argc) {
 			config_file = argv[++i];
 		} else {
@@ -116,17 +117,17 @@ int main(int argc, char **argv)
 	std::cout << "  Duration:  " << contest.duration << " minutes\n\n";
 
 	// Create WinKeyer server
-	std::cout << "Opening WinKeyer3 interface: " << serial_port << "\n";
-	WinKeyerServer winkeyer(serial_port);
+	std::cout << "Starting WinKeyer3 TCP server on port " << tcp_port << "\n";
+	auto winkeyer = std::make_unique<WinKeyerServer>(tcp_port);
 
-	if (!winkeyer.isOpen()) {
-		std::cerr << "\nError: Could not open serial port.\n";
-		std::cerr << "Make sure the device exists and you have permissions.\n";
+	if (!winkeyer->isOpen()) {
+		std::cerr << "\nError: Could not create TCP listener on port " << tcp_port << "\n";
+		std::cerr << "Make sure the port is not already in use.\n";
 		return 1;
 	}
 
 	// Connect WinKeyer to Contest/MyStation
-	winkeyer.onTextToSend = [&contest](const std::string &text) {
+	winkeyer->onTextToSend = [&contest](const std::string &text) {
 		// Convert to uppercase for CW
 		std::string upper = text;
 		for (auto &c : upper) {
@@ -135,11 +136,11 @@ int main(int argc, char **argv)
 		contest.me->sendText(upper);
 	};
 
-	winkeyer.onSpeedChange = [&contest](int wpm) {
+	winkeyer->onSpeedChange = [&contest](int wpm) {
 		contest.setWpm(wpm);
 	};
 
-	winkeyer.onPttChange = [](bool ptt) {
+	winkeyer->onPttChange = [](bool ptt) {
 		// PTT changes handled automatically by MyStation state
 	};
 
@@ -151,25 +152,25 @@ int main(int argc, char **argv)
 	contest.start();
 
 	std::cout << "\n=== Contest Running ===\n";
-	std::cout << "Connect your contest logger to: " << serial_port << "\n";
+	std::cout << "Waiting for logger to connect to: localhost:" << tcp_port << "\n";
 	std::cout << "Press Ctrl+C to stop\n\n";
 
 	// Main loop
 	int status_counter = 0;
 	while (g_running) {
 		// Poll WinKeyer for incoming commands
-		winkeyer.poll();
+		winkeyer->poll();
 
 		// Update busy status if MyStation state changed
 		if (contest.me->state != last_state) {
 			bool is_sending = (contest.me->state == station_state::sending);
-			winkeyer.setBusy(is_sending);
+			winkeyer->setBusy(is_sending);
 			last_state = contest.me->state;
 		}
 
 		// Print status every ~100ms
 		if (++status_counter >= 10) {
-			print_status(&contest, &winkeyer);
+			print_status(&contest, winkeyer.get());
 			status_counter = 0;
 		}
 

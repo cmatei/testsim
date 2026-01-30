@@ -8,13 +8,14 @@ Contest Simulator has **minimal dependencies**:
 - RtAudio (audio output)
 - Audio backend (one of: PulseAudio, JACK, ALSA)
 - Standard C/C++ runtime
+- Network sockets (built-in)
 
 **Build Dependencies:**
 - CMake 3.16+
 - C++17 compiler (g++ or clang++)
 - RtAudio development headers
 
-**No Qt, no Marble, no GUI libraries - pure CLI application.**
+**No Qt, no Marble, no GUI libraries, no serial port libraries - pure CLI network application.**
 
 ## Building
 
@@ -141,6 +142,3 @@ Runtime memory:
 - Activity level linearly affects CPU/memory (more DxStations)
 - QSB/QRN/QRM add minimal overhead (~1-2% CPU each)
 
-Tested on:
-- Intel Core i5 (2015): 3-5% CPU @ activity=4
-- Raspberry Pi 4: 10-15% CPU @ activity=4

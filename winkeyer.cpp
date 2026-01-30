@@ -3,8 +3,9 @@
 #include <cstring>
 #include <unistd.h>
 #include <fcntl.h>
-#include <termios.h>
-#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 // WinKeyer3 command definitions
 #define WK_ADMIN           0x00
@@ -37,92 +38,159 @@
 #define WK_BUFFERED_NOP    0x1E
 #define WK_ADMIN_EXT       0x1F
 
-WinKeyerServer::WinKeyerServer(const std::string &device)
-	: fd(-1), device_path(device), current_wpm(30),
-	  busy(false), breakin(false), wait_flag(false),
-	  initialized(false), expected_bytes(0), in_text_mode(false)
+// ===== TcpTransport Implementation =====
+
+TcpTransport::TcpTransport(int port)
+	: listen_fd(-1), client_fd(-1), port(port)
 {
-	if (!openPort(device)) {
-		std::cerr << "Warning: Could not open WinKeyer device: " << device << std::endl;
-		std::cerr << "To create a virtual serial port pair, use:" << std::endl;
-		std::cerr << "  socat -d -d pty,raw,echo=0 pty,raw,echo=0" << std::endl;
-		std::cerr << "Then connect your logger to one end and testsim to the other." << std::endl;
+	if (!createListener(port)) {
+		std::cerr << "Warning: Could not create TCP listener on port " << port << std::endl;
 	}
 }
 
-WinKeyerServer::~WinKeyerServer()
+TcpTransport::~TcpTransport()
 {
-	closePort();
+	close();
 }
 
-bool WinKeyerServer::openPort(const std::string &device)
+bool TcpTransport::createListener(int port)
 {
-	fd = open(device.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
-	if (fd < 0) {
+	listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (listen_fd < 0) {
+		std::cerr << "Error: Failed to create socket: " << strerror(errno) << std::endl;
 		return false;
 	}
 
-	struct termios tty;
-	memset(&tty, 0, sizeof(tty));
-
-	if (tcgetattr(fd, &tty) != 0) {
-		close(fd);
-		fd = -1;
+	// Set socket options
+	int opt = 1;
+	if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+		std::cerr << "Error: setsockopt SO_REUSEADDR failed: " << strerror(errno) << std::endl;
+		::close(listen_fd);
+		listen_fd = -1;
 		return false;
 	}
 
-	// WinKeyer3 USB: 1200 baud, 8N1
-	cfsetospeed(&tty, B1200);
-	cfsetispeed(&tty, B1200);
+	// Set non-blocking
+	int flags = fcntl(listen_fd, F_GETFL, 0);
+	fcntl(listen_fd, F_SETFL, flags | O_NONBLOCK);
 
-	tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;  // 8 bits
-	tty.c_iflag &= ~IGNBRK;  // Disable break processing
-	tty.c_lflag = 0;         // No signaling chars, no echo, no canonical
-	tty.c_oflag = 0;         // No remapping, no delays
-	tty.c_cc[VMIN] = 0;      // Non-blocking
-	tty.c_cc[VTIME] = 0;
+	// Bind to port
+	struct sockaddr_in addr;
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = INADDR_ANY;
+	addr.sin_port = htons(port);
 
-	tty.c_iflag &= ~(IXON | IXOFF | IXANY);  // No flow control
-	tty.c_cflag |= (CLOCAL | CREAD);         // Local, enable receiver
-	tty.c_cflag &= ~(PARENB | PARODD);       // No parity
-	tty.c_cflag &= ~CSTOPB;                  // 1 stop bit
-
-	if (tcsetattr(fd, TCSANOW, &tty) != 0) {
-		close(fd);
-		fd = -1;
+	if (bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+		std::cerr << "Error: Failed to bind to port " << port << ": " << strerror(errno) << std::endl;
+		::close(listen_fd);
+		listen_fd = -1;
 		return false;
 	}
 
-	std::cout << "WinKeyer3: Opened " << device << std::endl;
+	// Listen
+	if (listen(listen_fd, 1) < 0) {
+		std::cerr << "Error: Failed to listen on port " << port << ": " << strerror(errno) << std::endl;
+		::close(listen_fd);
+		listen_fd = -1;
+		return false;
+	}
+
+	std::cout << "WinKeyer3: TCP server listening on port " << port << std::endl;
+	std::cout << "Configure your logger to connect to: localhost:" << port << std::endl;
 	return true;
 }
 
-void WinKeyerServer::closePort()
+void TcpTransport::pollConnections()
 {
-	if (fd >= 0) {
-		close(fd);
-		fd = -1;
+	if (listen_fd < 0) return;
+
+	// Check for new connections
+	struct sockaddr_in client_addr;
+	socklen_t client_len = sizeof(client_addr);
+
+	int new_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &client_len);
+	if (new_fd >= 0) {
+		// Close existing client if any
+		if (client_fd >= 0) {
+			std::cout << "WinKeyer3: Closing existing client connection" << std::endl;
+			closeClient();
+		}
+
+		// Set non-blocking
+		int flags = fcntl(new_fd, F_GETFL, 0);
+		fcntl(new_fd, F_SETFL, flags | O_NONBLOCK);
+
+		client_fd = new_fd;
+		char client_ip[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+		std::cout << "WinKeyer3: Client connected from " << client_ip
+		          << ":" << ntohs(client_addr.sin_port) << std::endl;
 	}
 }
 
-int WinKeyerServer::readByte()
+void TcpTransport::closeClient()
 {
+	if (client_fd >= 0) {
+		::close(client_fd);
+		client_fd = -1;
+		std::cout << "WinKeyer3: Client disconnected" << std::endl;
+	}
+}
+
+void TcpTransport::close()
+{
+	closeClient();
+	if (listen_fd >= 0) {
+		::close(listen_fd);
+		listen_fd = -1;
+	}
+}
+
+int TcpTransport::readByte()
+{
+	if (client_fd < 0) return -1;
+
 	unsigned char byte;
-	ssize_t n = read(fd, &byte, 1);
+	ssize_t n = recv(client_fd, &byte, 1, 0);
 	if (n == 1) {
 		return byte;
+	} else if (n == 0) {
+		// Client disconnected
+		closeClient();
+	} else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+		// Error (not just "no data available")
+		std::cerr << "WinKeyer3: Read error: " << strerror(errno) << std::endl;
+		closeClient();
 	}
 	return -1;
 }
 
-void WinKeyerServer::writeByte(unsigned char byte)
+void TcpTransport::writeByte(unsigned char byte)
 {
-	write(fd, &byte, 1);
+	if (client_fd >= 0) {
+		send(client_fd, &byte, 1, 0);
+	}
 }
 
-void WinKeyerServer::writeBytes(const unsigned char *data, size_t len)
+void TcpTransport::writeBytes(const unsigned char *data, size_t len)
 {
-	write(fd, data, len);
+	if (client_fd >= 0) {
+		send(client_fd, data, len, 0);
+	}
+}
+
+// ===== WinKeyerServer Implementation =====
+
+WinKeyerServer::WinKeyerServer(int port)
+	: current_wpm(30), busy(false), breakin(false), wait_flag(false),
+	  initialized(false), expected_bytes(0), in_text_mode(false)
+{
+	transport = std::make_unique<TcpTransport>(port);
+}
+
+WinKeyerServer::~WinKeyerServer()
+{
 }
 
 unsigned char WinKeyerServer::getStatusByte() const
@@ -139,14 +207,14 @@ unsigned char WinKeyerServer::getStatusByte() const
 void WinKeyerServer::sendStatus()
 {
 	unsigned char status = getStatusByte();
-	writeByte(status);
+	transport->writeByte(status);
 }
 
 void WinKeyerServer::setBusy(bool b)
 {
 	busy = b;
 	// Send status update if logger is waiting
-	if (initialized) {
+	if (initialized && transport->isOpen()) {
 		sendStatus();
 	}
 }
@@ -162,14 +230,14 @@ void WinKeyerServer::processCommand(unsigned char cmd)
 		case WK_ADMIN: {
 			// Admin command - usually 0x00 to reset/initialize
 			// Wait for second byte
-			int param = readByte();
+			int param = transport->readByte();
 			if (param >= 0) {
 				if (param == 0x02) {
 					// Open command - initialize
 					initialized = true;
 					std::cout << "WinKeyer3: Initialized" << std::endl;
 					// Send version info (version 31 = WK3)
-					writeByte(31);
+					transport->writeByte(31);
 				} else if (param == 0x03) {
 					// Close command
 					initialized = false;
@@ -182,14 +250,14 @@ void WinKeyerServer::processCommand(unsigned char cmd)
 
 		case WK_SIDETONE: {
 			// Sidetone frequency (0-9, or 1-4000 Hz in extended mode)
-			int freq = readByte();
+			int freq = transport->readByte();
 			// Ignore for simulator
 			break;
 		}
 
 		case WK_WPM_SPEED: {
 			// Set WPM speed
-			int wpm = readByte();
+			int wpm = transport->readByte();
 			if (wpm >= 0) {
 				current_wpm = wpm;
 				if (onSpeedChange) {
@@ -202,13 +270,13 @@ void WinKeyerServer::processCommand(unsigned char cmd)
 
 		case WK_WEIGHT: {
 			// Dit/dah ratio weight (ignored for simulator)
-			int weight = readByte();
+			int weight = transport->readByte();
 			break;
 		}
 
 		case WK_PTT: {
 			// PTT on/off
-			int state = readByte();
+			int state = transport->readByte();
 			if (state >= 0) {
 				bool ptt_on = (state & 0x01) != 0;
 				if (onPttChange) {
@@ -220,7 +288,7 @@ void WinKeyerServer::processCommand(unsigned char cmd)
 
 		case WK_BUFFERED_SPEED: {
 			// Speed change in buffer
-			int wpm = readByte();
+			int wpm = transport->readByte();
 			if (wpm >= 0) {
 				current_wpm = wpm;
 				if (onSpeedChange) {
@@ -232,7 +300,7 @@ void WinKeyerServer::processCommand(unsigned char cmd)
 
 		case WK_BUFFERED_PTT: {
 			// PTT in buffer
-			int state = readByte();
+			int state = transport->readByte();
 			if (state >= 0) {
 				bool ptt_on = (state & 0x01) != 0;
 				if (onPttChange) {
@@ -271,7 +339,7 @@ void WinKeyerServer::processCommand(unsigned char cmd)
 
 		case WK_PAUSE: {
 			// Pause/resume keying
-			int state = readByte();
+			int state = transport->readByte();
 			// For simulator, we could pause MyStation
 			break;
 		}
@@ -299,11 +367,14 @@ void WinKeyerServer::processCommand(unsigned char cmd)
 
 void WinKeyerServer::poll()
 {
-	if (fd < 0) return;
+	if (!transport || !transport->isOpen()) return;
+
+	// Poll for new connections (TCP only)
+	transport->pollConnections();
 
 	// Read available bytes
 	int byte;
-	while ((byte = readByte()) >= 0) {
+	while ((byte = transport->readByte()) >= 0) {
 		processCommand(static_cast<unsigned char>(byte));
 	}
 }

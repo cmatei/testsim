@@ -1,39 +1,19 @@
-# WinKeyer3 Mode Setup Guide
+# WinKeyer3 Network Mode Setup Guide
 
-Contest Simulator can operate as a virtual contest radio controlled by your logging software via WinKeyer3 protocol.
+Contest Simulator operates as a virtual contest radio controlled by your logging software via WinKeyer3 protocol over TCP/IP.
 
 ## Quick Start
 
-### 1. Create Virtual Serial Port Pair
+### 1. Start Contest Simulator
 
 ```bash
-# Install socat if needed
-sudo apt-get install socat  # Debian/Ubuntu
-sudo dnf install socat      # Fedora
-
-# Create virtual serial port pair
-socat -d -d pty,raw,echo=0,link=/tmp/logger pty,raw,echo=0,link=/tmp/testsim
-```
-
-This creates two linked serial ports:
-- `/tmp/logger` - Point your contest logger here
-- `/tmp/testsim` - Contest Simulator daemon connects here
-
-**Keep this terminal open** - closing it destroys the virtual ports.
-
-### 2. Start Contest Simulator Daemon
-
-In a new terminal:
-
-```bash
-cd /home/cmatei/qt-tests
-./testsim --serial /tmp/testsim
+./testsim --port 7890
 ```
 
 You should see:
 ```
 =====================================
-  Contest Simulator Contest Simulator (WinKeyer3)
+   Contest Simulator (WinKeyer3)
 =====================================
 
 Initializing contest simulator...
@@ -44,52 +24,112 @@ Configuration:
   Activity:  4
   ...
 
+WinKeyer3: TCP server listening on port 7890
+Configure your logger to connect to: localhost:7890
+
 === Contest Running ===
-Connect your contest logger to: /tmp/testsim
+Waiting for logger to connect to: localhost:7890
 Press Ctrl+C to stop
 ```
 
-### 3. Configure Your Contest Logger
+### 2. Configure Your Contest Logger
 
-#### N1MM+ Configuration
-1. **Config** → **Config Ports**
-2. **CW/Other** tab
-3. Set **Winkeyer Port** to `/tmp/logger`
-4. Set **Winkeyer Mode** to WK2 or WK3
-5. Click **Test** - you should see "WinKeyer OK"
+#### Win-Test (Recommended)
 
-#### Win-Test Configuration (via Wine)
+Win-Test has native support for network WinKeyer:
+
 1. **Options** → **Interfaces** → **Winkeyer**
-2. Set port to `COM1` (configure Wine to map `/tmp/logger` to COM1)
-3. Test connection
+2. Select **Network** mode
+3. Enter host: `localhost` or `127.0.0.1`
+4. Enter port: `7890`
+5. Click **Connect**
+6. You should see "WinKeyer connected" in status bar
+
+#### DXLog.net
+
+DXLog.net supports TCP WinKeyer:
+
+1. **Options** → **Station** → **CW/WinKeyer**
+2. Enable **Network WinKeyer**
+3. Host: `localhost`
+4. Port: `7890`
+5. Test connection
+
+#### TRX-Manager
+
+TRX-Manager can connect via TCP:
+
+1. **Settings** → **CW Keyer** → **WinKeyer**
+2. Select **Network** connection
+3. Host: `localhost:7890`
+4. Apply settings
+
+#### N1MM+ (Requires Bridge)
+
+N1MM+ doesn't support network WinKeyer natively. You have two options:
+
+**Option A: Use com0com + tcp2com**
+1. Install [com0com](https://sourceforge.net/projects/com0com/) (virtual serial ports)
+2. Install [tcp2com](https://github.com/pyserial/pyserial/tree/master/examples) or similar TCP-to-serial bridge
+3. Create virtual port pair (e.g., COM1 ↔ COM2)
+4. Run: `tcp2com --port 7890 --device COM1`
+5. Configure N1MM+ WinKeyer to use COM2
+
+**Option B: Use hub4com**
+1. Install [hub4com](https://sourceforge.net/projects/com0com/)
+2. Run: `hub4com --create-filter=escparse,com,parse --octs=off \\.\COM8 --use-driver=tcp *localhost:7890`
+3. Configure N1MM+ WinKeyer to use COM8
 
 #### Other Loggers
-Configure WinKeyer port to point to `/tmp/logger`
 
-### 4. Audio Routing
+Look for these settings:
+- "Network WinKeyer" or "TCP WinKeyer"
+- "Remote WinKeyer"
+- "Ethernet Keyer"
+
+Connect to: `localhost:7890`
+
+### 3. Audio Routing
 
 Contest Simulator outputs audio to the default system audio device. Your logger needs to receive this audio as input.
 
-#### Option A: Use Same Sound Card (Recommended)
+#### Option A: Same Sound Card (Simplest)
+
 If your logger supports selecting audio input device:
 1. Contest Simulator outputs to default speakers/headphones
-2. Logger uses the same device for input
+2. Logger uses the same device for input (most sound cards support monitoring)
 3. You'll hear the pile-up in your headphones
 
-#### Option B: Virtual Audio Cable
-For separate audio routing:
+#### Option B: Virtual Audio Cable (PulseAudio)
+
+For separate audio routing on Linux:
 
 ```bash
 # Create virtual audio sink
-pactl load-module module-null-sink sink_name=testsim_audio sink_properties=device.description="Contest Simulator_Audio"
+pactl load-module module-null-sink sink_name=testsim_audio sink_properties=device.description="ContestSim_Audio"
 
 # Create loopback to make it an input source
 pactl load-module module-loopback sink=testsim_audio source=testsim_audio.monitor
 
-# Tell Contest Simulator to use this sink (edit ~/.asoundrc or use pavucontrol)
+# Route testsim to the virtual sink using pavucontrol
+pavucontrol
 ```
 
-Then configure your logger to use "Contest Simulator_Audio" as audio input.
+Then configure your logger to use "ContestSim_Audio" as audio input.
+
+#### Option C: Virtual Audio Cable (JACK)
+
+For professional audio routing:
+
+```bash
+# Start JACK if not running
+qjackctl &
+
+# Launch testsim (will appear in JACK connections)
+./testsim --port 7890
+
+# Use qjackctl to route testsim output to logger input
+```
 
 ## Usage
 
@@ -126,6 +166,14 @@ The Contest Simulator terminal shows:
 - **WPM**: Current sending speed
 - **TX/RX**: Transmit or receive state
 
+### Completed QSOs
+
+As QSOs complete, they're printed to the console:
+```
+[QSO] W1ABC 599 042
+[QSO] K3XYZ 599 043
+```
+
 ### Stopping
 
 Press `Ctrl+C` to stop Contest Simulator. It will show final statistics:
@@ -143,8 +191,20 @@ Final Statistics:
 ./testsim --help
 
 Options:
-  --serial <device>    Serial port for WinKeyer3 (default: /dev/ttyVK0)
+  --port <port>        TCP port for WinKeyer3 (default: 7890)
   --config <file>      Configuration file (default: none)
+```
+
+Examples:
+```bash
+# Default port 7890
+./testsim
+
+# Custom port
+./testsim --port 8000
+
+# With configuration file
+./testsim --port 7890 --config contest.ini
 ```
 
 ### Configuration File (Optional)
@@ -196,7 +256,7 @@ savesummary=1
 
 Run with config:
 ```bash
-./testsim --serial /tmp/testsim --config contest.ini
+./testsim --port 7890 --config contest.ini
 ```
 
 ### Key Parameters
@@ -215,30 +275,42 @@ Run with config:
 
 ## Troubleshooting
 
-### "Could not open serial port"
+### "Connection refused" in logger
 
 ```bash
-# Check port exists
-ls -l /tmp/testsim
+# Check testsim is running
+ps aux | grep testsim
 
-# Check permissions
-# Virtual ports from socat should be user-accessible
+# Check port is listening
+netstat -an | grep 7890
+# or
+ss -tlnp | grep 7890
 
-# Verify socat is still running
-ps aux | grep socat
+# Try different port
+./testsim --port 8000
 ```
 
-### "WinKeyer not responding" in logger
+### "Port already in use"
 
-1. Make sure socat is running
-2. Check you're connecting to `/tmp/logger` (not `/tmp/testsim`)
-3. Try different WinKeyer modes (WK2, WK3)
-4. Check Contest Simulator daemon is running and connected
+```bash
+# Find what's using the port
+lsof -i :7890
+
+# Kill the process or use different port
+./testsim --port 7891
+```
+
+### Logger disconnects immediately
+
+1. Check logger supports network WinKeyer mode
+2. Try different logger (Win-Test has excellent support)
+3. Check firewall isn't blocking localhost connections
+4. Enable debug output if available in logger
 
 ### "No audio" or "Can't hear pile-up"
 
 ```bash
-# Check Contest Simulator is outputting audio
+# Check testsim is outputting audio
 pactl list sink-inputs
 
 # Verify default audio device
@@ -246,6 +318,10 @@ pactl info | grep "Default Sink"
 
 # Test audio
 speaker-test -t sine -f 440
+
+# Check audio in contest config
+./testsim --config contest.ini
+# Verify rate=11025, bufsize=512
 ```
 
 ### Latency Issues
@@ -253,44 +329,66 @@ speaker-test -t sine -f 440
 If you experience audio lag:
 1. Reduce buffer size in contest.ini: `bufsize=256` (default 512)
 2. Close other audio applications
-3. Use ALSA instead of PulseAudio for lower latency
+3. Use ALSA or JACK instead of PulseAudio for lower latency
+4. Increase system audio buffer if using JACK
 
-## Advanced: Permanent Virtual Serial Ports
+### WinKeyer not responding
 
-For persistent virtual ports across reboots:
-
-```bash
-# Install socat as a systemd service
-sudo systemctl edit --force --full testsim-serial.service
+Check terminal output for:
+```
+WinKeyer3: Client connected from 127.0.0.1:xxxxx
+WinKeyer3: Initialized
+WinKeyer3: Speed set to XX WPM
 ```
 
-Add:
-```ini
-[Unit]
-Description=Contest Simulator Virtual Serial Ports
-After=network.target
+If not seeing connection:
+1. Verify logger is configured for network mode
+2. Check correct host (localhost or 127.0.0.1) and port
+3. Test with simple telnet: `telnet localhost 7890`
+4. Check for firewall rules blocking localhost
 
-[Service]
-ExecStart=/usr/bin/socat pty,raw,echo=0,link=/tmp/logger pty,raw,echo=0,link=/tmp/testsim
-Restart=always
+## Network Operation
 
-[Install]
-WantedBy=multi-user.target
+### Running on Different Machine
+
+Contest Simulator can run on a different computer:
+
+```bash
+# On server machine (192.168.1.100)
+./testsim --port 7890
+
+# Configure logger to connect to:
+# Host: 192.168.1.100
+# Port: 7890
 ```
 
-Enable:
+**Note:** Make sure firewall allows incoming connections on port 7890.
+
+### Firewall Configuration
+
+Allow incoming TCP connections:
+
 ```bash
-sudo systemctl enable testsim-serial.service
-sudo systemctl start testsim-serial.service
+# UFW (Ubuntu)
+sudo ufw allow 7890/tcp
+
+# firewalld (Fedora/RHEL)
+sudo firewall-cmd --add-port=7890/tcp --permanent
+sudo firewall-cmd --reload
+
+# iptables
+sudo iptables -A INPUT -p tcp --dport 7890 -j ACCEPT
 ```
 
 ## Tips
 
-- **Adjust activity** for realistic pile-up density
+- **Adjust activity** (1-10) for realistic pile-up density
 - **Enable lids** for practice with operator mistakes
 - **QSB on** makes copying more challenging
 - **Single mode** for practicing one-at-a-time QSOs
-- **Monitor multiple loggers** by creating additional virtual port pairs
+- **Lower bandwidth** (200-300 Hz) for more realistic filtering
+- **Use configuration file** to save your preferred settings
+- **Test with Win-Test** first - it has excellent network WinKeyer support
 
 ## Support
 

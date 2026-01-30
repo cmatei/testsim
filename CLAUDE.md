@@ -37,22 +37,19 @@ This is a **CW (Morse code) contest simulator**. The application (Contest Simula
 
 ### Quick Start
 
-1. **Create virtual serial port pair:**
+1. **Start Contest Simulator:**
 ```bash
-socat -d -d pty,raw,echo=0,link=/tmp/logger pty,raw,echo=0,link=/tmp/testsim
+./testsim --port 7890
 ```
 
-2. **Start Contest Simulator:**
-```bash
-./testsim --serial /tmp/testsim
-```
+2. **Configure your contest logger:**
+   - Connect to WinKeyer via TCP: `localhost:7890`
+   - Some loggers call this "Network WinKeyer" or "TCP WinKeyer"
+   - Examples: Win-Test (network mode), DXLog.net, TRX-Manager
 
-3. **Configure your contest logger:**
-   - N1MM+: Config → Config Ports → WinKeyer Port: `/tmp/logger`
-   - Win-Test: Options → Interfaces → Winkeyer
-   - Other loggers: Point WinKeyer port to `/tmp/logger`
+3. **Start operating!** Send CQ from your logger and work the simulated pile-up.
 
-4. **Start operating!** Send CQ from your logger and work the simulated pile-up.
+**Note:** Some loggers (like N1MM+) may require third-party TCP-to-serial bridge software if they don't support network WinKeyer natively.
 
 **See WINKEYER_SETUP.md for detailed setup instructions.**
 
@@ -132,12 +129,14 @@ gcc -o gentables gentables.c -lm
 - Contest notifications on transmission start/finish
 
 **WinKeyer3 Interface** (`winkeyer.h`, `winkeyer.cpp`)
-- Implements WinKeyer3 USB protocol over serial port
-- Allows contest loggers (N1MM+, Win-Test, etc.) to control the simulator
+- Implements WinKeyer3 protocol over TCP socket
+- Allows contest loggers (N1MM+, Win-Test, etc.) to control the simulator over the network
 - Decodes keyer commands into text for MyStation
 - Reports busy/breakin status back to logger
 - Supports speed changes, PTT, buffer management
-- Works with virtual serial ports (socat) for logger integration
+- Transport layer abstraction: TcpTransport for network communication
+- Network socket server listening on configurable port (default: 7890)
+- Supports multiple connect/disconnect cycles without restart
 
 **Contest Class** (`contest.h`, `contest.cpp`)
 - Main orchestrator that ties all components together
