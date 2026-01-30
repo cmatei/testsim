@@ -96,7 +96,7 @@ bool TcpTransport::createListener(int port)
 		return false;
 	}
 
-	std::cout << "WinKeyer3: TCP server listening on port " << port << std::endl;
+	std::cout << "WinKeyer: TCP server listening on port " << port << std::endl;
 	std::cout << "Configure your logger to connect to: localhost:" << port << std::endl;
 	return true;
 }
@@ -113,7 +113,7 @@ void TcpTransport::pollConnections()
 	if (new_fd >= 0) {
 		// Close existing client if any
 		if (client_fd >= 0) {
-			std::cout << "WinKeyer3: Closing existing client connection" << std::endl;
+			std::cout << "WinKeyer: Closing existing client connection" << std::endl;
 			closeClient();
 		}
 
@@ -124,7 +124,7 @@ void TcpTransport::pollConnections()
 		client_fd = new_fd;
 		char client_ip[INET_ADDRSTRLEN];
 		inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-		std::cout << "WinKeyer3: Client connected from " << client_ip
+		std::cout << "WinKeyer: Client connected from " << client_ip
 		          << ":" << ntohs(client_addr.sin_port) << std::endl;
 	}
 }
@@ -134,7 +134,7 @@ void TcpTransport::closeClient()
 	if (client_fd >= 0) {
 		::close(client_fd);
 		client_fd = -1;
-		std::cout << "WinKeyer3: Client disconnected" << std::endl;
+		std::cout << "WinKeyer: Client disconnected" << std::endl;
 	}
 }
 
@@ -160,7 +160,7 @@ int TcpTransport::readByte()
 		closeClient();
 	} else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
 		// Error (not just "no data available")
-		std::cerr << "WinKeyer3: Read error: " << strerror(errno) << std::endl;
+		std::cerr << "WinKeyer: Read error: " << strerror(errno) << std::endl;
 		closeClient();
 	}
 	return -1;
@@ -182,8 +182,8 @@ void TcpTransport::writeBytes(const unsigned char *data, size_t len)
 
 // ===== WinKeyerServer Implementation =====
 
-WinKeyerServer::WinKeyerServer(int port)
-	: current_wpm(30), busy(false), breakin(false), wait_flag(false),
+WinKeyerServer::WinKeyerServer(int port, int version)
+	: protocol_version(version), current_wpm(30), busy(false), breakin(false), wait_flag(false),
 	  initialized(false), expected_bytes(0), in_text_mode(false)
 {
 	transport = std::make_unique<TcpTransport>(port);
@@ -235,13 +235,14 @@ void WinKeyerServer::processCommand(unsigned char cmd)
 				if (param == 0x02) {
 					// Open command - initialize
 					initialized = true;
-					std::cout << "WinKeyer3: Initialized" << std::endl;
-					// Send version info (version 31 = WK3)
-					transport->writeByte(31);
+					std::cout << "WinKeyer" << protocol_version << ": Initialized" << std::endl;
+					// Send version info (version 23 = WK2, version 31 = WK3)
+					int version_byte = (protocol_version == 2) ? 23 : 31;
+					transport->writeByte(version_byte);
 				} else if (param == 0x03) {
 					// Close command
 					initialized = false;
-					std::cout << "WinKeyer3: Closed" << std::endl;
+					std::cout << "WinKeyer" << protocol_version << ": Closed" << std::endl;
 				}
 				sendStatus();
 			}
@@ -263,7 +264,7 @@ void WinKeyerServer::processCommand(unsigned char cmd)
 				if (onSpeedChange) {
 					onSpeedChange(wpm);
 				}
-				std::cout << "WinKeyer3: Speed set to " << wpm << " WPM" << std::endl;
+				std::cout << "WinKeyer: Speed set to " << wpm << " WPM" << std::endl;
 			}
 			break;
 		}
@@ -354,7 +355,7 @@ void WinKeyerServer::processCommand(unsigned char cmd)
 			} else if (cmd == 0x00 && in_text_mode) {
 				// Null terminator - end of text message
 				if (!text_buffer.empty() && onTextToSend) {
-					std::cout << "WinKeyer3: Send text: " << text_buffer << std::endl;
+					std::cout << "WinKeyer: Send text: " << text_buffer << std::endl;
 					onTextToSend(text_buffer);
 					text_buffer.clear();
 				}

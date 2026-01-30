@@ -60,9 +60,9 @@ private:
 };
 
 /**
- * WinKeyerServer - Implements WinKeyer3 protocol over TCP socket
+ * WinKeyerServer - Implements WinKeyer2/3 protocol over TCP socket
  *
- * This class handles the WinKeyer3 protocol, allowing contest logging
+ * This class handles the WinKeyer2 or WinKeyer3 protocol, allowing contest logging
  * software (N1MM+, Win-Test, etc.) to control the CW keyer over the network.
  *
  * The logger sends keying commands, and this class decodes them into
@@ -70,8 +70,8 @@ private:
  */
 class WinKeyerServer {
 public:
-	// Create WinKeyer server on specified TCP port
-	WinKeyerServer(int port);
+	// Create WinKeyer server on specified TCP port with protocol version (2 or 3)
+	WinKeyerServer(int port, int version = 3);
 
 	~WinKeyerServer();
 
@@ -104,6 +104,7 @@ private:
 	std::unique_ptr<Transport> transport;
 
 	// WinKeyer state
+	int protocol_version;  // 2 or 3
 	int current_wpm;
 	bool busy;
 	bool breakin;

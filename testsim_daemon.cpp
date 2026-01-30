@@ -23,18 +23,20 @@ void signal_handler(int signum)
 
 void print_usage(const char *prog)
 {
-	std::cout << "Contest Simulator - WinKeyer3 Network Mode\n";
+	std::cout << "Contest Simulator - WinKeyer Network Mode\n";
 	std::cout << "Usage: " << prog << " [options]\n\n";
 	std::cout << "Options:\n";
-	std::cout << "  --port <port>        TCP port for WinKeyer3 (default: 7890)\n";
-	std::cout << "  --config <file>      Configuration file (default: none, uses defaults)\n";
-	std::cout << "  --help               Show this help\n\n";
+	std::cout << "  --port <port>             TCP port for WinKeyer (default: 7890)\n";
+	std::cout << "  --winkeyer-version <2|3>  WinKeyer protocol version (default: 3)\n";
+	std::cout << "  --config <file>           Configuration file (default: none, uses defaults)\n";
+	std::cout << "  --help                    Show this help\n\n";
 	std::cout << "Network Mode:\n";
-	std::cout << "  Contest Simulator runs a WinKeyer3 TCP server.\n";
+	std::cout << "  Contest Simulator runs a WinKeyer2 or WinKeyer3 TCP server.\n";
 	std::cout << "  Configure your logger to connect to: localhost:<port>\n";
 	std::cout << "  Some loggers may call this 'Network WinKeyer' or 'TCP WinKeyer'\n\n";
 	std::cout << "Examples:\n";
 	std::cout << "  " << prog << " --port 7890\n";
+	std::cout << "  " << prog << " --port 7890 --winkeyer-version 2\n";
 	std::cout << "  " << prog << " --port 7890 --config contest.ini\n\n";
 	std::cout << "Audio Routing:\n";
 	std::cout << "  Configure your logger to use 'pulse' or system default audio input\n";
@@ -61,6 +63,7 @@ void print_status(Contest *contest, WinKeyerServer *wk)
 int main(int argc, char **argv)
 {
 	int tcp_port = 7890;  // Default port
+	int winkeyer_version = 3;  // Default WinKeyer3
 	std::string config_file;
 
 	// Parse command line arguments
@@ -71,6 +74,12 @@ int main(int argc, char **argv)
 			return 0;
 		} else if (arg == "--port" && i + 1 < argc) {
 			tcp_port = std::stoi(argv[++i]);
+		} else if (arg == "--winkeyer-version" && i + 1 < argc) {
+			winkeyer_version = std::stoi(argv[++i]);
+			if (winkeyer_version != 2 && winkeyer_version != 3) {
+				std::cerr << "Error: WinKeyer version must be 2 or 3" << std::endl;
+				return 1;
+			}
 		} else if (arg == "--config" && i + 1 < argc) {
 			config_file = argv[++i];
 		} else {
@@ -81,7 +90,7 @@ int main(int argc, char **argv)
 	}
 
 	std::cout << "=====================================\n";
-	std::cout << "   Contest Simulator (WinKeyer3)    \n";
+	std::cout << "   Contest Simulator (WinKeyer" << winkeyer_version << ")    \n";
 	std::cout << "=====================================\n\n";
 
 	// Setup signal handlers
@@ -117,8 +126,8 @@ int main(int argc, char **argv)
 	std::cout << "  Duration:  " << contest.duration << " minutes\n\n";
 
 	// Create WinKeyer server
-	std::cout << "Starting WinKeyer3 TCP server on port " << tcp_port << "\n";
-	auto winkeyer = std::make_unique<WinKeyerServer>(tcp_port);
+	std::cout << "Starting WinKeyer" << winkeyer_version << " TCP server on port " << tcp_port << "\n";
+	auto winkeyer = std::make_unique<WinKeyerServer>(tcp_port, winkeyer_version);
 
 	if (!winkeyer->isOpen()) {
 		std::cerr << "\nError: Could not create TCP listener on port " << tcp_port << "\n";
