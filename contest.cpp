@@ -85,22 +85,6 @@ Contest::Contest(RNG *rng, const std::string &inifile)
 		_bufindex[i] = static_cast<double>(i);
 	}
 
-	// Create initial calling stations in pileup mode
-	if (mode == RunMode::pileup || mode == RunMode::pileup_qsonr) {
-		int initial_stations = _rng->poisson(0.5 * activity);
-		for (int i = 0; i < initial_stations; i++) {
-			DxStation *dx = new DxStation(_rng, _keyer, _callList, me,
-				0.0,  // time = 0 at startup
-				lids, lidNrProb, lidRstProb, qsb, flutterProb,
-				rptProb, fast, slow, false, _bufsize, _rate);
-			// Set operator to NeedQso state and station to preparingtosend
-			dx->oper->state = OperatorState::NeedQso;
-			dx->state = station_state::preparingtosend;
-			dx->timeout = dx->oper->getSendDelay();  // Set initial delay before calling
-			stations.push_back(dx);
-		}
-	}
-
 	// Initialize RtAudio
 	rtaudio = new RtAudio();
 }
