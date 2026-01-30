@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/cmatei/qt-tests/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -1,0 +1,3 @@
+/home/cmatei/qt-tests/CMakeFiles/testsim.dir
+/home/cmatei/qt-tests/CMakeFiles/edit_cache.dir
+/home/cmatei/qt-tests/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,79 @@
+# Contest Simulator Contest Simulator Configuration
+# Copy to contest.ini and customize
+
+[Appearance]
+# Font size (not used in daemon mode)
+fontsize=12
+
+[Sound]
+# Sample rate (Hz) - 11025 recommended for CW
+rate=11025
+# Buffer size (samples) - smaller = lower latency
+bufsize=512
+
+[Station]
+# Your call sign
+call=P55CF
+# Your default sending speed (WPM) - logger can override
+wpm=40
+# Fast multiplier for high-speed operators (default 1.1 = 10% faster)
+fast=1.1
+# Slow multiplier for slow operators (default 0.9 = 10% slower)
+slow=0.9
+# Receiver bandwidth in Hz (100-600, steps of 50)
+bandwidth=500
+# CW pitch in Hz
+pitch=500
+# QSK (full break-in) - 1=on, 0=off
+qsk=1
+# QSK decay time in seconds (how fast receiver recovers after TX)
+qskdecaytime=0.030
+# CW reverse (LSB instead of USB) - 1=on, 0=off
+cwreverse=0
+# RIT (Receiver Incremental Tuning) offset in Hz
+rit=0
+# Monitor volume (0.0-1.0) - how loud you hear your own signal
+monitor=0.1
+
+[Conditions]
+# Atmospheric noise (QRN) - 1=on, 0=off
+qrn=1
+# Station interference (QRM) - 1=on, 0=off
+qrm=1
+# Mean time between QRM stations (seconds)
+tqrm=240
+# Signal fading (QSB) - 1=on, 0=off
+qsb=1
+# Flutter on fading - 1=on, 0=off
+flutter=1
+# Probability of flutter (0.0-1.0)
+flutterprob=0.3
+# QSY (stations give up and call QSY?) - 1=on, 0=off
+qsy=1
+# Enable "lid" behavior (operator mistakes) - 1=on, 0=off
+lids=1
+# Activity level (1-10, affects pile-up density)
+# 1=quiet, 4=moderate, 7=busy, 10=insane
+activity=4
+# Probability of RST mistakes by lids (0.0-1.0)
+lidrstprob=0.03
+# Probability of serial number mistakes by lids (0.0-1.0)
+lidnrprob=0.1
+# Probability of repeated exchanges (0.0-1.0)
+rptprob=0.1
+
+[Contest]
+# Contest duration in minutes (or QSO count in _qsonr modes)
+duration=60
+# Contest mode:
+#   RunMode.pileup - Multiple stations call, duration in minutes
+#   RunMode.single - One station at a time, duration in minutes
+#   RunMode.pileup_qsonr - Multiple stations, duration in QSO count
+#   RunMode.single_qsonr - One station, duration in QSO count
+mode=RunMode.pileup
+# Save audio to WAV file - 1=on, 0=off (not implemented)
+savewave=0
+# Save configuration on exit - 1=on, 0=off
+saveini=1
+# Save contest summary - 1=on, 0=off
+savesummary=1
