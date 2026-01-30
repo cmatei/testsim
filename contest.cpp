@@ -93,8 +93,10 @@ Contest::Contest(RNG *rng, const std::string &inifile)
 				0.0,  // time = 0 at startup
 				lids, lidNrProb, lidRstProb, qsb, flutterProb,
 				rptProb, fast, slow, false, _bufsize, _rate);
-			// Set operator to NeedQso state so they start calling immediately
+			// Set operator to NeedQso state and station to preparingtosend
 			dx->oper->state = OperatorState::NeedQso;
+			dx->state = station_state::preparingtosend;
+			dx->timeout = dx->oper->getSendDelay();  // Set initial delay before calling
 			stations.push_back(dx);
 		}
 	}
