@@ -495,7 +495,7 @@ void WinKeyerServer::poll()
 // ===== CwdaemonServer Implementation =====
 
 CwdaemonServer::CwdaemonServer(int port)
-	: current_wpm(30), current_tone(800), current_weight(0), ptt_state(false)
+	: current_wpm(30), base_wpm(30), current_tone(800), current_weight(0), ptt_state(false)
 {
 	transport = std::make_unique<UdpTransport>(port);
 }
@@ -555,6 +555,7 @@ void CwdaemonServer::processEscCommand(unsigned char cmd, const unsigned char *d
 	case '0': {
 		// Reset to defaults
 		current_wpm = 24;
+		base_wpm = 24;
 		current_tone = 800;
 		current_weight = 50;
 		ptt_state = false;
@@ -577,6 +578,7 @@ void CwdaemonServer::processEscCommand(unsigned char cmd, const unsigned char *d
 
 		if (wpm >= 5 && wpm <= 60) {
 			current_wpm = wpm;
+			base_wpm = wpm;
 			if (onSpeedChange) {
 				onSpeedChange(wpm);
 			}
@@ -597,7 +599,14 @@ void CwdaemonServer::processEscCommand(unsigned char cmd, const unsigned char *d
 	}
 
 	case '4': {
-		// Abort message
+		// Abort message - restore WPM to value before inline speed changes
+		if (current_wpm != base_wpm) {
+			current_wpm = base_wpm;
+			if (onSpeedChange) {
+				onSpeedChange(current_wpm);
+			}
+			std::cout << "cwdaemon: Speed restored to " << current_wpm << " WPM" << std::endl;
+		}
 		if (onAbort) {
 			onAbort();
 		}
@@ -718,56 +727,90 @@ void CwdaemonServer::processEscCommand(unsigned char cmd, const unsigned char *d
 
 void CwdaemonServer::processText(const std::string &text)
 {
-	std::string processed;
-	processed.reserve(text.size());
+	// Save base WPM before any inline speed changes
+	base_wpm = current_wpm;
+
+	// First pass: build the full processed text (without +/-) for
+	// message type detection, which needs to see the complete message.
+	std::string full;
+	full.reserve(text.size());
+
+	for (size_t i = 0; i < text.size(); i++) {
+		char c = text[i];
+		if (c == '+' || c == '-' || c == '~')
+			continue;
+		switch (c) {
+			case '*': full += "<AR>"; break;
+			case '=': full += "<BT>"; break;
+			case '<': full += "<SK>"; break;
+			case '(': full += "<KN>"; break;
+			case '!': full += "<SN>"; break;
+			case '&': full += "<AS>"; break;
+			case '>': full += "<BK>"; break;
+			default:  full += c; break;
+		}
+	}
+
+	if (full.empty())
+		return;
+
+	// Detect message type on the full text before sending segments
+	if (onDetectMessage) {
+		onDetectMessage(full);
+	}
+
+	// Second pass: split on +/- boundaries, sending each segment
+	// separately so inline speed changes take effect between pieces.
+	std::string segment;
+	segment.reserve(text.size());
 
 	for (size_t i = 0; i < text.size(); i++) {
 		char c = text[i];
 
-		// Handle inline speed changes
-		if (c == '+') {
-			current_wpm += 2;
-			if (current_wpm > 60) current_wpm = 60;
+		if (c == '+' || c == '-') {
+			if (!segment.empty()) {
+				std::cout << "cwdaemon: Send text: " << segment << std::endl;
+				if (onTextToSend) {
+					onTextToSend(segment);
+				}
+				segment.clear();
+			}
+
+			if (c == '+') {
+				current_wpm += 2;
+				if (current_wpm > 60) current_wpm = 60;
+			} else {
+				current_wpm -= 2;
+				if (current_wpm < 5) current_wpm = 5;
+			}
 			if (onSpeedChange) {
 				onSpeedChange(current_wpm);
 			}
-			std::cout << "cwdaemon: Speed increased to " << current_wpm << " WPM" << std::endl;
-			continue;
-		} else if (c == '-') {
-			current_wpm -= 2;
-			if (current_wpm < 5) current_wpm = 5;
-			if (onSpeedChange) {
-				onSpeedChange(current_wpm);
-			}
-			std::cout << "cwdaemon: Speed decreased to " << current_wpm << " WPM" << std::endl;
+			std::cout << "cwdaemon: Speed changed to " << current_wpm << " WPM" << std::endl;
 			continue;
 		}
 
-		// Handle special characters
 		switch (c) {
-			case '*': processed += "<AR>"; break;  // AR prosign
-			case '=': processed += "<BT>"; break;  // BT prosign
-			case '<': processed += "<SK>"; break;  // SK prosign
-			case '(': processed += "<KN>"; break;  // KN prosign
-			case '!': processed += "<SN>"; break;  // SN prosign
-			case '&': processed += "<AS>"; break;  // AS prosign
-			case '>': processed += "<BK>"; break;  // BK prosign
-			case '~':
-				// Half-space delay - skip for now (could add spacing if keyer supports it)
-				break;
-			default:
-				processed += c;
-				break;
+			case '*': segment += "<AR>"; break;
+			case '=': segment += "<BT>"; break;
+			case '<': segment += "<SK>"; break;
+			case '(': segment += "<KN>"; break;
+			case '!': segment += "<SN>"; break;
+			case '&': segment += "<AS>"; break;
+			case '>': segment += "<BK>"; break;
+			case '~': break;
+			default:  segment += c; break;
 		}
 	}
 
-	if (!processed.empty()) {
-		std::cout << "cwdaemon: Send text: " << processed << std::endl;
+	if (!segment.empty()) {
+		std::cout << "cwdaemon: Send text: " << segment << std::endl;
 		if (onTextToSend) {
-			onTextToSend(processed);
+			onTextToSend(segment);
 		}
-		sendReply();
 	}
+
+	sendReply();
 }
 
 void CwdaemonServer::sendReply()

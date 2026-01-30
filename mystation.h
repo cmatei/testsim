@@ -27,6 +27,7 @@ public:
 	const std::vector<float> &get_buffer();
 
 	// MyStation specific methods
+	void detectMessage(const std::string &msg);
 	void sendText(const std::string &msg);
 	void abortSend();
 	bool updateCallInMessage(const std::string &call);

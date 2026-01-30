@@ -169,6 +169,7 @@ public:
 
 	// Callbacks (same as WinKeyerServer)
 	std::function<void(const std::string&)> onTextToSend;
+	std::function<void(const std::string&)> onDetectMessage;
 	std::function<void(bool)> onPttChange;
 	std::function<void(int)> onSpeedChange;
 	std::function<void()> onAbort;
@@ -188,6 +189,7 @@ private:
 
 	std::unique_ptr<UdpTransport> transport;
 	int current_wpm;
+	int base_wpm;      // WPM before inline speed changes, restored on abort
 	int current_tone;
 	int current_weight;
 	bool ptt_state;

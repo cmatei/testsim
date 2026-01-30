@@ -185,6 +185,14 @@ int main(int argc, char **argv)
 		}
 
 		// Connect cwdaemon callbacks
+		cwdaemon->onDetectMessage = [&contest](const std::string &text) {
+			std::string upper = text;
+			for (auto &c : upper) {
+				c = std::toupper(c);
+			}
+			contest.me->detectMessage(upper);
+		};
+
 		cwdaemon->onTextToSend = [&contest](const std::string &text) {
 			std::string upper = text;
 			for (auto &c : upper) {

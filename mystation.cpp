@@ -46,15 +46,13 @@ void MyStation::abortSend()
 	processEvent(station_event::msgsent);
 }
 
-void MyStation::sendText(const std::string &msg)
+void MyStation::detectMessage(const std::string &msg)
 {
-	size_t pos;
-
-	// FIXME: guess message type here and add to msgs, so dxstations
+	// Guess message type from full text, so dxstations
 	// can processEvent in Contest::onMeFinishedSending()
 	msgs.clear();
-	if ((msg.find("CQ ") != std::string::npos) ||
-	    (msg.find("TEST ") != std::string::npos)) {
+	if ((msg.rfind("CQ ", 0) != std::string::npos) ||
+	    (msg.rfind("TEST ", 0) != std::string::npos)) {
 		msgs.push_back(station_message::cq);
 	}
 
@@ -84,6 +82,17 @@ void MyStation::sendText(const std::string &msg)
 
 	if (msg.rfind("AGN", 0) != std::string::npos) {
 		msgs.push_back(station_message::agn);
+	}
+}
+
+void MyStation::sendText(const std::string &msg)
+{
+	size_t pos;
+
+	// Detect message type if not already set by an explicit
+	// detectMessage() call (e.g. cwdaemon with inline speed changes)
+	if (this->state != station_state::sending && msgs.empty()) {
+		detectMessage(msg);
 	}
 
 	std::string remaining = msg;

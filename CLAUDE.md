@@ -127,8 +127,8 @@ gcc -o gentables gentables.c -lm
 
 **MyStation** (`mystation.h`, `mystation.cpp`)
 - User's station implementation
-- Message type detection: parses outgoing text to guess message type (CQ, TU, exchange, AGN, etc.) so DxOperator state machines can react appropriately via `Contest::onMeFinishedSending()`
-- Message piece splitting on `<his>` placeholders for dynamic call updates
+- `detectMessage()`: parses outgoing text to guess message type (CQ, TU, exchange, AGN, etc.) so DxOperator state machines can react appropriately via `Contest::onMeFinishedSending()`. Called automatically by `sendText()` for simple messages, or explicitly before segmented sends (e.g. cwdaemon inline speed changes) to detect on the full unsplit text
+- `sendText()`: splits text on `<his>` placeholders into pieces for dynamic call updates; calls `detectMessage()` automatically when `msgs` is empty (no prior explicit detection)
 - Real-time call sign updates while transmitting
 - Abort functionality for stopping mid-transmission
 - Contest notifications on transmission start/finish
@@ -147,7 +147,7 @@ gcc -o gentables gentables.c -lm
   - Implements cwdaemon protocol over UDP socket
   - Allows Linux contest loggers (TLF, xlog, CQRLog, etc.) to control the simulator
   - ESC-based command protocol for speed, PTT, abort, etc.
-  - Supports inline speed changes with +/- characters
+  - Inline speed changes with +/- characters: text is split on +/- boundaries, each segment sent separately via `onTextToSend` with `onSpeedChange` between them; `onDetectMessage` called first with the full composed text so MyStation detects message type correctly; abort (ESC-4) restores WPM to pre-inline-change value (`base_wpm`)
   - Special character mapping for prosigns (AR, BT, SK, etc.)
   - UdpTransport: UDP datagram communication with recvfrom/sendto
   - Default port: 6789
