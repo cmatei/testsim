@@ -132,9 +132,9 @@ void Contest::setBandwidth(int bandwidth)
 	delete _m3;
 
 	// Create new filters
-	_m1 = new MovAvgComplex(_bufsize, navg);
-	_m2 = new MovAvgComplex(_bufsize, navg);
-	_m3 = new MovAvgComplex(_bufsize, navg);
+	_m1 = new MovAvg(_bufsize, navg);
+	_m2 = new MovAvg(_bufsize, navg);
+	_m3 = new MovAvg(_bufsize, navg);
 }
 
 void Contest::setPitch(float pitch)

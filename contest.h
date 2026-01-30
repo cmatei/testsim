@@ -131,9 +131,9 @@ private:
 	CallList *_callList;
 	Modulator *modulator;
 	Agc *_m5;
-	MovAvgComplex *_m1;
-	MovAvgComplex *_m2;
-	MovAvgComplex *_m3;
+	MovAvg *_m1;
+	MovAvg *_m2;
+	MovAvg *_m3;
 
 	// Audio parameters
 	size_t _rate;

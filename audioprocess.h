@@ -8,18 +8,12 @@
 
 class MovAvg {
 public:
-        MovAvg(size_t bufsize, size_t navg): bufsize(bufsize), navg(navg)
-	{
-		assert(bufsize > navg);
-		prev.resize(bufsize + navg);  // Fixed: was bufsize + navg - 1
-		std::fill(prev.begin(), prev.end(), 0.0);
-	}
-
-	std::vector<double> avg(std::vector<double> buf);
+	MovAvg(size_t bufsize, size_t navg);
+	std::vector<std::complex<double>> avg(const std::vector<std::complex<double>> &buf);
 
 private:
 	size_t bufsize, navg;
-	std::vector<double> prev;
+	std::vector<std::complex<double>> prev;
 };
 
 class Modulator {

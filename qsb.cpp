@@ -3,44 +3,6 @@
 #include <algorithm>
 #include <cassert>
 
-// MovAvgComplex implementation
-MovAvgComplex::MovAvgComplex(size_t bufsize_, size_t navg_)
-	: bufsize(bufsize_), navg(navg_)
-{
-	assert(bufsize > navg);
-	prev.resize(bufsize + navg);  // Fixed: was bufsize + navg - 1
-	std::fill(prev.begin(), prev.end(), std::complex<double>(0.0, 0.0));
-}
-
-std::vector<std::complex<double>> MovAvgComplex::avg(const std::vector<std::complex<double>> &buf)
-{
-	assert(buf.size() == bufsize);
-
-	std::complex<double> sum(0.0, 0.0);
-	std::vector<std::complex<double>> res;
-
-	// Copy new data into prev buffer at the end
-	for (size_t i = navg - 1; i < bufsize + navg - 1; i++) {
-		prev[i] = buf[i - navg + 1];
-	}
-
-	// Calculate moving average
-	for (size_t i = 0; i < bufsize + navg; i++) {
-		sum += prev[i];
-		if (i >= navg) {
-			res.push_back(sum / static_cast<double>(navg));
-			sum -= prev[i - navg];
-		}
-	}
-
-	// Save the tail for next iteration
-	for (size_t i = bufsize - navg; i < bufsize; i++) {
-		prev[i - bufsize + navg] = buf[i];
-	}
-
-	return res;
-}
-
 // QSB implementation
 QSB::QSB(RNG *rng_, float bandwidth_, size_t bufsize_, size_t rate_)
 	: rng(rng_), bandwidth(0.0), bufsize(bufsize_), rate(rate_),
@@ -76,9 +38,9 @@ void QSB::setBandwidth(float bw)
 	delete av1;
 	delete av2;
 	delete av3;
-	av1 = new MovAvgComplex(gain_bufsize, navg);
-	av2 = new MovAvgComplex(gain_bufsize, navg);
-	av3 = new MovAvgComplex(gain_bufsize, navg);
+	av1 = new MovAvg(gain_bufsize, navg);
+	av2 = new MovAvg(gain_bufsize, navg);
+	av3 = new MovAvg(gain_bufsize, navg);
 
 	// Initialize gain buffer
 	gain_buf.clear();
