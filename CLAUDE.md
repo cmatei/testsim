@@ -39,19 +39,23 @@ This is a **CW (Morse code) contest simulator**. The application (Contest Simula
 
 1. **Start Contest Simulator:**
 ```bash
+# WinKeyer protocol (default)
 ./testsim --port 7890
+
+# cwdaemon protocol
+./testsim --protocol cwdaemon --cwdaemon-port 6789
+
+# Both protocols simultaneously
+./testsim --protocol both --port 7890 --cwdaemon-port 6789
 ```
 
 2. **Configure your contest logger:**
-   - Connect to WinKeyer via TCP: `localhost:7890`
-   - Some loggers call this "Network WinKeyer" or "TCP WinKeyer"
-   - Examples: Win-Test (network mode), DXLog.net, TRX-Manager
+   - **WinKeyer**: Connect via TCP to `localhost:7890` (Win-Test, DXLog.net, TRX-Manager, N1MM+ with bridge)
+   - **cwdaemon**: Connect via UDP to `localhost:6789` (TLF, xlog, CQRLog, Tucnak)
 
 3. **Start operating!** Send CQ from your logger and work the simulated pile-up.
 
-**Note:** Some loggers (like N1MM+) may require third-party TCP-to-serial bridge software if they don't support network WinKeyer natively.
-
-**See WINKEYER_SETUP.md for detailed setup instructions.**
+**See WINKEYER_SETUP.md for detailed setup instructions for both protocols.**
 
 ## Build System
 
@@ -70,7 +74,7 @@ make
 - Standard C/C++ libraries
 
 **Executable**:
-- `testsim` - WinKeyer3 daemon mode (434KB binary)
+- `testsim` - Network keyer daemon (supports WinKeyer3 and cwdaemon protocols)
 
 **Note**: Qt and Marble have been completely removed from the project. This is a CLI-only application.
 
@@ -128,15 +132,27 @@ gcc -o gentables gentables.c -lm
 - Abort functionality for stopping mid-transmission
 - Contest notifications on transmission start/finish
 
-**WinKeyer3 Interface** (`winkeyer.h`, `winkeyer.cpp`)
-- Implements WinKeyer3 protocol over TCP socket
-- Allows contest loggers (N1MM+, Win-Test, etc.) to control the simulator over the network
-- Decodes keyer commands into text for MyStation
-- Reports busy/breakin status back to logger
-- Supports speed changes, PTT, buffer management
-- Transport layer abstraction: TcpTransport for network communication
-- Network socket server listening on configurable port (default: 7890)
-- Supports multiple connect/disconnect cycles without restart
+**Network Keyer Interfaces** (`winkeyer.h`, `winkeyer.cpp`)
+- **WinKeyer3 Protocol** (TCP):
+  - Implements WinKeyer2/3 protocol over TCP socket
+  - Allows Windows contest loggers (N1MM+, Win-Test, etc.) to control the simulator
+  - Decodes keyer commands into text for MyStation
+  - Reports busy/breakin status back to logger
+  - Supports speed changes, PTT, buffer management
+  - TcpTransport: TCP network communication with listen/accept
+  - Default port: 7890
+  - Supports multiple connect/disconnect cycles without restart
+- **cwdaemon Protocol** (UDP):
+  - Implements cwdaemon protocol over UDP socket
+  - Allows Linux contest loggers (TLF, xlog, CQRLog, etc.) to control the simulator
+  - ESC-based command protocol for speed, PTT, abort, etc.
+  - Supports inline speed changes with +/- characters
+  - Special character mapping for prosigns (AR, BT, SK, etc.)
+  - UdpTransport: UDP datagram communication with recvfrom/sendto
+  - Default port: 6789
+  - Connectionless operation with reply support
+- **Transport Abstraction**: Common interface for TCP and UDP with polymorphism
+- Both protocols can run simultaneously on different ports
 
 **Contest Class** (`contest.h`, `contest.cpp`)
 - Main orchestrator that ties all components together

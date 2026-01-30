@@ -6,6 +6,7 @@
 #include <vector>
 #include <queue>
 #include <memory>
+#include <netinet/in.h>
 
 /**
  * Transport interface - abstraction for network communication
@@ -57,6 +58,37 @@ private:
 	int listen_fd;   // Listening socket
 	int client_fd;   // Connected client
 	int port;
+};
+
+/**
+ * UDP socket transport for cwdaemon
+ */
+class UdpTransport : public Transport {
+public:
+	UdpTransport(int port);
+	~UdpTransport() override;
+
+	int readByte() override;
+	void writeByte(unsigned char byte) override;
+	void writeBytes(const unsigned char *data, size_t len) override;
+	bool isOpen() const override { return socket_fd >= 0; }
+	void close() override;
+
+	// Read full datagram (cwdaemon messages are complete datagrams)
+	int readDatagram(unsigned char *buffer, size_t max_len);
+
+private:
+	bool createSocket(int port);
+
+	int socket_fd;
+	int port;
+	struct sockaddr_in client_addr;  // Last client address for replies
+	socklen_t client_addr_len;
+	bool has_client;  // Track if we have a client to reply to
+
+	// Internal buffer for byte-by-byte reading
+	std::vector<unsigned char> read_buffer;
+	size_t read_pos;
 };
 
 /**
@@ -118,6 +150,50 @@ private:
 	// Text buffer for 0x1B command
 	std::string text_buffer;
 	bool in_text_mode;
+};
+
+/**
+ * CwdaemonServer - Implements cwdaemon protocol over UDP socket
+ *
+ * This class handles the cwdaemon protocol, an alternative to WinKeyer used by
+ * many Linux contest loggers (TLF, xlog, etc.). Uses UDP instead of TCP and
+ * an ESC-based command protocol.
+ */
+class CwdaemonServer {
+public:
+	CwdaemonServer(int port);
+	~CwdaemonServer();
+
+	// Poll for incoming datagrams
+	void poll();
+
+	// Callbacks (same as WinKeyerServer)
+	std::function<void(const std::string&)> onTextToSend;
+	std::function<void(bool)> onPttChange;
+	std::function<void(int)> onSpeedChange;
+	std::function<void()> onAbort;
+
+	// Get current state
+	int getWpm() const { return current_wpm; }
+	bool isOpen() const { return transport && transport->isOpen(); }
+
+	// Set reply text (for ESC-h command)
+	void setReply(const std::string& reply);
+
+private:
+	void processMessage(const unsigned char *data, size_t len);
+	void processEscCommand(unsigned char cmd, const unsigned char *data, size_t len, size_t &pos);
+	void processText(const std::string &text);
+	void sendReply();
+
+	std::unique_ptr<UdpTransport> transport;
+	int current_wpm;
+	int current_tone;
+	int current_weight;
+	bool ptt_state;
+	std::string reply_text;  // For ESC-h command
+
+	static constexpr unsigned char ESC = 0x1B;
 };
 
 #endif

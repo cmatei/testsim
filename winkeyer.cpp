@@ -180,6 +180,118 @@ void TcpTransport::writeBytes(const unsigned char *data, size_t len)
 	}
 }
 
+// ===== UdpTransport Implementation =====
+
+UdpTransport::UdpTransport(int port)
+	: socket_fd(-1), port(port), client_addr_len(sizeof(client_addr)),
+	  has_client(false), read_pos(0)
+{
+	memset(&client_addr, 0, sizeof(client_addr));
+	if (!createSocket(port)) {
+		std::cerr << "Warning: Could not create UDP socket on port " << port << std::endl;
+	}
+}
+
+UdpTransport::~UdpTransport()
+{
+	close();
+}
+
+bool UdpTransport::createSocket(int port)
+{
+	socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (socket_fd < 0) {
+		std::cerr << "Error: Failed to create UDP socket: " << strerror(errno) << std::endl;
+		return false;
+	}
+
+	// Set socket options
+	int opt = 1;
+	if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+		std::cerr << "Error: setsockopt SO_REUSEADDR failed: " << strerror(errno) << std::endl;
+		::close(socket_fd);
+		socket_fd = -1;
+		return false;
+	}
+
+	// Set non-blocking
+	int flags = fcntl(socket_fd, F_GETFL, 0);
+	fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
+
+	// Bind to port
+	struct sockaddr_in addr;
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = INADDR_ANY;
+	addr.sin_port = htons(port);
+
+	if (bind(socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+		std::cerr << "Error: Failed to bind UDP socket to port " << port << ": " << strerror(errno) << std::endl;
+		::close(socket_fd);
+		socket_fd = -1;
+		return false;
+	}
+
+	std::cout << "cwdaemon: UDP server listening on port " << port << std::endl;
+	std::cout << "Configure your logger for cwdaemon at: localhost:" << port << std::endl;
+	return true;
+}
+
+void UdpTransport::close()
+{
+	if (socket_fd >= 0) {
+		::close(socket_fd);
+		socket_fd = -1;
+	}
+	read_buffer.clear();
+	read_pos = 0;
+	has_client = false;
+}
+
+int UdpTransport::readDatagram(unsigned char *buffer, size_t max_len)
+{
+	if (socket_fd < 0) return -1;
+
+	client_addr_len = sizeof(client_addr);
+	ssize_t n = recvfrom(socket_fd, buffer, max_len, 0,
+	                     (struct sockaddr*)&client_addr, &client_addr_len);
+
+	if (n > 0) {
+		has_client = true;
+		// Store in internal buffer for byte-by-byte reading
+		read_buffer.assign(buffer, buffer + n);
+		read_pos = 0;
+		return n;
+	} else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+		std::cerr << "cwdaemon: Read error: " << strerror(errno) << std::endl;
+	}
+	return -1;
+}
+
+int UdpTransport::readByte()
+{
+	if (read_pos < read_buffer.size()) {
+		return read_buffer[read_pos++];
+	}
+	return -1;
+}
+
+void UdpTransport::writeByte(unsigned char byte)
+{
+	if (socket_fd >= 0 && has_client) {
+		sendto(socket_fd, &byte, 1, 0,
+		       (struct sockaddr*)&client_addr, client_addr_len);
+	}
+}
+
+void UdpTransport::writeBytes(const unsigned char *data, size_t len)
+{
+	if (socket_fd >= 0 && has_client) {
+		sendto(socket_fd, data, len, 0,
+		       (struct sockaddr*)&client_addr, client_addr_len);
+	}
+}
+
 // ===== WinKeyerServer Implementation =====
 
 WinKeyerServer::WinKeyerServer(int port, int version)
@@ -378,4 +490,234 @@ void WinKeyerServer::poll()
 	while ((byte = transport->readByte()) >= 0) {
 		processCommand(static_cast<unsigned char>(byte));
 	}
+}
+
+// ===== CwdaemonServer Implementation =====
+
+CwdaemonServer::CwdaemonServer(int port)
+	: current_wpm(24), current_tone(800), current_weight(0), ptt_state(false)
+{
+	transport = std::make_unique<UdpTransport>(port);
+}
+
+CwdaemonServer::~CwdaemonServer()
+{
+}
+
+void CwdaemonServer::poll()
+{
+	if (!transport || !transport->isOpen()) return;
+
+	// Read datagram
+	unsigned char buffer[256];
+	int len = transport->readDatagram(buffer, sizeof(buffer));
+	if (len > 0) {
+		processMessage(buffer, len);
+	}
+}
+
+void CwdaemonServer::processMessage(const unsigned char *data, size_t len)
+{
+	size_t pos = 0;
+	std::string text_accumulator;
+
+	while (pos < len) {
+		if (data[pos] == ESC) {
+			// Process accumulated text before ESC command
+			if (!text_accumulator.empty()) {
+				processText(text_accumulator);
+				text_accumulator.clear();
+			}
+
+			// Process ESC command
+			pos++;  // Skip ESC
+			if (pos < len) {
+				unsigned char cmd = data[pos];
+				pos++;
+				processEscCommand(cmd, data, len, pos);
+			}
+		} else {
+			// Accumulate text
+			text_accumulator += static_cast<char>(data[pos]);
+			pos++;
+		}
+	}
+
+	// Process any remaining text
+	if (!text_accumulator.empty()) {
+		processText(text_accumulator);
+	}
+}
+
+void CwdaemonServer::processEscCommand(unsigned char cmd, const unsigned char *data, size_t len, size_t &pos)
+{
+	switch (cmd) {
+		case '0': {
+			// Reset to defaults
+			current_wpm = 24;
+			current_tone = 800;
+			current_weight = 0;
+			ptt_state = false;
+			if (onSpeedChange) {
+				onSpeedChange(current_wpm);
+			}
+			if (onPttChange) {
+				onPttChange(false);
+			}
+			std::cout << "cwdaemon: Reset to defaults" << std::endl;
+			break;
+		}
+
+		case '2': {
+			// Set speed
+			if (pos < len) {
+				int wpm = data[pos++];
+				if (wpm >= 5 && wpm <= 60) {
+					current_wpm = wpm;
+					if (onSpeedChange) {
+						onSpeedChange(wpm);
+					}
+					std::cout << "cwdaemon: Speed set to " << wpm << " WPM" << std::endl;
+				}
+			}
+			break;
+		}
+
+		case '3': {
+			// Set sidetone frequency
+			if (pos < len) {
+				int freq = data[pos++];
+				current_tone = freq;
+				// Ignore for simulator (no sidetone control)
+			}
+			break;
+		}
+
+		case '4': {
+			// Abort message
+			if (onAbort) {
+				onAbort();
+			}
+			std::cout << "cwdaemon: Abort message" << std::endl;
+			sendReply();
+			break;
+		}
+
+		case '7': {
+			// Set weighting
+			if (pos < len) {
+				int weight = static_cast<signed char>(data[pos++]);
+				current_weight = weight;
+				// Ignore for simulator
+			}
+			break;
+		}
+
+		case 'a': {
+			// PTT control
+			if (pos < len) {
+				int state = data[pos++];
+				ptt_state = (state != 0);
+				if (onPttChange) {
+					onPttChange(ptt_state);
+				}
+				std::cout << "cwdaemon: PTT " << (ptt_state ? "ON" : "OFF") << std::endl;
+			}
+			break;
+		}
+
+		case 'c': {
+			// Tune for N seconds
+			if (pos < len) {
+				int secs = data[pos++];
+				std::cout << "cwdaemon: Tune for " << secs << " seconds (ignored)" << std::endl;
+				// Could trigger PTT for tune mode, but we ignore this for simulator
+			}
+			break;
+		}
+
+		case 'h': {
+			// Set reply text
+			reply_text.clear();
+			while (pos < len && data[pos] != ESC) {
+				reply_text += static_cast<char>(data[pos++]);
+			}
+			std::cout << "cwdaemon: Reply text set: " << reply_text << std::endl;
+			break;
+		}
+
+		default: {
+			// Unknown command
+			std::cout << "cwdaemon: Unknown command ESC-" << cmd << std::endl;
+			break;
+		}
+	}
+}
+
+void CwdaemonServer::processText(const std::string &text)
+{
+	std::string processed;
+	processed.reserve(text.size());
+
+	for (size_t i = 0; i < text.size(); i++) {
+		char c = text[i];
+
+		// Handle inline speed changes
+		if (c == '+') {
+			current_wpm += 2;
+			if (current_wpm > 60) current_wpm = 60;
+			if (onSpeedChange) {
+				onSpeedChange(current_wpm);
+			}
+			std::cout << "cwdaemon: Speed increased to " << current_wpm << " WPM" << std::endl;
+			continue;
+		} else if (c == '-') {
+			current_wpm -= 2;
+			if (current_wpm < 5) current_wpm = 5;
+			if (onSpeedChange) {
+				onSpeedChange(current_wpm);
+			}
+			std::cout << "cwdaemon: Speed decreased to " << current_wpm << " WPM" << std::endl;
+			continue;
+		}
+
+		// Handle special characters
+		switch (c) {
+			case '*': processed += "<AR>"; break;  // AR prosign
+			case '=': processed += "<BT>"; break;  // BT prosign
+			case '<': processed += "<SK>"; break;  // SK prosign
+			case '(': processed += "<KN>"; break;  // KN prosign
+			case '!': processed += "<SN>"; break;  // SN prosign
+			case '&': processed += "<AS>"; break;  // AS prosign
+			case '>': processed += "<BK>"; break;  // BK prosign
+			case '~':
+				// Half-space delay - skip for now (could add spacing if keyer supports it)
+				break;
+			default:
+				processed += c;
+				break;
+		}
+	}
+
+	if (!processed.empty()) {
+		std::cout << "cwdaemon: Send text: " << processed << std::endl;
+		if (onTextToSend) {
+			onTextToSend(processed);
+		}
+		sendReply();
+	}
+}
+
+void CwdaemonServer::sendReply()
+{
+	if (!reply_text.empty() && transport) {
+		transport->writeBytes(reinterpret_cast<const unsigned char*>(reply_text.c_str()),
+		                      reply_text.size());
+		reply_text.clear();
+	}
+}
+
+void CwdaemonServer::setReply(const std::string& reply)
+{
+	reply_text = reply;
 }

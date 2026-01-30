@@ -1,38 +1,87 @@
-# WinKeyer3 Network Mode Setup Guide
+# Network Keyer Setup Guide
 
-Contest Simulator operates as a virtual contest radio controlled by your logging software via WinKeyer3 protocol over TCP/IP.
+Contest Simulator operates as a virtual contest radio controlled by your logging software via network keyer protocols (WinKeyer3 or cwdaemon).
+
+## Protocols
+
+Contest Simulator supports two network keyer protocols:
+
+- **WinKeyer3** (TCP, port 7890) - Windows loggers: N1MM+, Win-Test, DXLog.net, TRX-Manager
+- **cwdaemon** (UDP, port 6789) - Linux loggers: TLF, xlog, CQRLog, Tucnak
 
 ## Quick Start
 
 ### 1. Start Contest Simulator
 
+**For WinKeyer (default):**
 ```bash
 ./testsim --port 7890
+```
+
+**For cwdaemon:**
+```bash
+./testsim --protocol cwdaemon --cwdaemon-port 6789
+```
+
+**For both protocols simultaneously:**
+```bash
+./testsim --protocol both --port 7890 --cwdaemon-port 6789
 ```
 
 You should see:
 ```
 =====================================
-   Contest Simulator (WinKeyer3)
+      Contest Simulator
 =====================================
 
 Initializing contest simulator...
 Configuration:
-  Call:      P55CF
+  Call:      YO3GEK
   WPM:       40
   Mode:      Pileup
-  Activity:  4
+  Activity:  6
   ...
 
 WinKeyer3: TCP server listening on port 7890
 Configure your logger to connect to: localhost:7890
 
 === Contest Running ===
-Waiting for logger to connect to: localhost:7890
+WinKeyer3 listening on: localhost:7890
 Press Ctrl+C to stop
 ```
 
 ### 2. Configure Your Contest Logger
+
+#### cwdaemon Loggers (Linux)
+
+##### TLF (The Logging Framework)
+
+TLF has native cwdaemon support:
+
+1. Edit your TLF contest configuration file (e.g., `cqww.ini`)
+2. Add or modify:
+   ```
+   CWDAEMON=localhost:6789
+   ```
+3. Start TLF: `tlf -d cqww`
+4. TLF will automatically connect to cwdaemon
+
+##### xlog
+
+1. **Settings** → **Preferences** → **Keying**
+2. Select **cwdaemon** as keyer type
+3. Host: `localhost`
+4. Port: `6789`
+5. Click **Test** to verify connection
+
+##### CQRLog
+
+1. **Preferences** → **TRX Control**
+2. CW Keyer: **cwdaemon**
+3. Host: `localhost:6789`
+4. Apply and test
+
+#### WinKeyer Loggers (Windows/Cross-platform)
 
 #### Win-Test (Recommended)
 
@@ -191,20 +240,29 @@ Final Statistics:
 ./testsim --help
 
 Options:
-  --port <port>        TCP port for WinKeyer3 (default: 7890)
-  --config <file>      Configuration file (default: none)
+  --protocol <winkeyer|cwdaemon|both>  Protocol to use (default: winkeyer)
+  --port <port>                        TCP port for WinKeyer (default: 7890)
+  --cwdaemon-port <port>               UDP port for cwdaemon (default: 6789)
+  --winkeyer-version <2|3>             WinKeyer protocol version (default: 3)
+  --config <file>                      Configuration file (default: none)
 ```
 
 Examples:
 ```bash
-# Default port 7890
+# WinKeyer on default port 7890
 ./testsim
 
-# Custom port
-./testsim --port 8000
+# cwdaemon on default port 6789
+./testsim --protocol cwdaemon
+
+# Both protocols simultaneously
+./testsim --protocol both
+
+# Custom ports
+./testsim --protocol both --port 8000 --cwdaemon-port 6790
 
 # With configuration file
-./testsim --port 7890 --config contest.ini
+./testsim --protocol cwdaemon --config contest.ini
 ```
 
 ### Configuration File (Optional)
@@ -272,6 +330,62 @@ Run with config:
 - **lids**: Enable operator mistakes
 - **mode**: `RunMode.pileup` or `RunMode.single`
 - **duration**: Contest duration in minutes
+
+## cwdaemon Protocol Features
+
+The cwdaemon protocol support includes:
+
+### Supported Commands
+
+| Command | Function | Implementation |
+|---------|----------|----------------|
+| `ESC 0` | Reset to defaults | Resets WPM to 24, clears state |
+| `ESC 2 <wpm>` | Set speed | Sets WPM (5-60) |
+| `ESC 3 <freq>` | Set sidetone | Accepted but ignored (simulator controls audio) |
+| `ESC 4` | Abort message | Stops current transmission |
+| `ESC 7 <weight>` | Set weighting | Accepted but ignored |
+| `ESC a <state>` | PTT control | Sets PTT on/off |
+| Plain text | Send CW | Transmits message |
+
+### Inline Speed Changes
+
+Within text messages, you can use:
+- `+` - Increase speed by 2 WPM
+- `-` - Decrease speed by 2 WPM
+
+Example: `TEST++FASTER--SLOWER` will send "TEST" at base speed, "FASTER" 4 WPM faster, and "SLOWER" back at base speed.
+
+### Special Character Mapping
+
+| Character | Prosign | Morse |
+|-----------|---------|-------|
+| `*` | AR | `<AR>` |
+| `=` | BT | `<BT>` |
+| `<` | SK | `<SK>` |
+| `(` | KN | `<KN>` |
+| `!` | SN | `<SN>` |
+| `&` | AS | `<AS>` |
+| `>` | BK | `<BK>` |
+
+Example: `CQ*=` sends "CQ" followed by AR and BT prosigns.
+
+### Testing cwdaemon
+
+You can test the cwdaemon interface using command-line tools:
+
+```bash
+# Send text message
+echo "CQ TEST" | socat - UDP:127.0.0.1:6789
+
+# Set speed to 30 WPM
+printf "\x1b\x32\x1e" | socat - UDP:127.0.0.1:6789
+
+# Abort transmission
+printf "\x1b\x34" | socat - UDP:127.0.0.1:6789
+
+# Test inline speed changes
+echo "TEST++FASTER" | socat - UDP:127.0.0.1:6789
+```
 
 ## Troubleshooting
 
