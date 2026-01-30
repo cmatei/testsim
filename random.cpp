@@ -15,7 +15,8 @@ double RNG::random()
 
 int RNG::integers(int low, int high)
 {
-	return low + std::floor((high - low) * random());
+	int result = low + static_cast<int>(std::floor((high - low) * random()));
+	return std::min(result, high - 1);
 }
 
 double RNG::uniform()

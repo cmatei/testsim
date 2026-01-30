@@ -102,9 +102,11 @@ void station::tick()
 		state = station_state::listening;
 		processEvent(station_event::msgsent);
 	} else if (state != station_state::sending) {
-		timeout -= 1;
-		if (timeout < 0) {
-			processEvent(station_event::timeout);
+		if (timeout != NEVER) {
+			timeout -= 1;
+			if (timeout < 0) {
+				processEvent(station_event::timeout);
+			}
 		}
 	}
 }

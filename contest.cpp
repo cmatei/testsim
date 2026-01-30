@@ -117,7 +117,7 @@ Contest::~Contest()
 void Contest::setTqrm(float tqrm)
 {
 	_tqrm = tqrm;
-	qrmProbPerBuffer = _bufsize / _rate / _tqrm;
+	qrmProbPerBuffer = static_cast<float>(_bufsize) / _rate / _tqrm;
 }
 
 void Contest::setBandwidth(int bandwidth)
@@ -466,6 +466,7 @@ void Contest::stop()
 
 std::tuple<int, int, int> Contest::time() const
 {
+	std::lock_guard<std::mutex> lock(audio_mutex);
 	int s = static_cast<int>(bufcount * _bufsize / _rate);
 	int m = s / 60;
 	s = s % 60;

@@ -39,7 +39,7 @@ QrmStation::QrmStation(RNG *rng, Keyer *keyer, CallList *callList,
 	this->wpm = rng->integers(30, 51);
 
 	// Send a random QRM message to start
-	int msg_idx = rng->integers(0, qrm_messages.size());
+	int msg_idx = rng->integers(0, static_cast<int>(qrm_messages.size()));
 	sendMsg(qrm_messages[msg_idx]);
 }
 

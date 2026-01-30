@@ -165,7 +165,7 @@ bool MyStation::updateCallInMessage(const std::string &call)
 		if (result) {
 			// Check if what we've sent so far matches
 			result = true;
-			for (size_t i = 0; i < sendpos && i < new_envelope.size(); i++) {
+			for (size_t i = 0; i < sendpos && i < new_envelope.size() && i < envelope.size(); i++) {
 				if (std::abs(envelope[i] - new_envelope[i]) > 1e-6) {
 					result = false;
 					break;

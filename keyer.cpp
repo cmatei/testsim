@@ -84,8 +84,11 @@ void Keyer::setRisetime(float risetime_)
 	float step = 1.0 / (2.7 * risetime * samplerate);
 
 	risevec.clear();
-	for (auto i = 0.0f; i <= 1.0; i += step)
+	int steps = static_cast<int>(std::round(1.0f / step));
+	for (int j = 0; j <= steps; j++) {
+		float i = j * step;
 		risevec.push_back(0.5f * (1.0f + std::erf(5.0f * (i - 0.5f))));
+	}
 }
 
 
