@@ -13,14 +13,18 @@ Contest::Contest(RNG *rng, const std::string &inifile)
 	  rtaudio(nullptr), bufcount(0), seconds(0.0),
 	  _rfg0(1.0), _ritph(0.0), _extratime(0.0)
 {
-	// Try to read config, otherwise use defaults
+	// Try to read config file (default to contest.ini if not specified)
+	std::string config_file = inifile.empty() ? "contest.ini" : inifile;
 	bool config_loaded = false;
-	if (!inifile.empty()) {
-		try {
-			readConfig(inifile);
-			config_loaded = true;
-		} catch (...) {
-			// Fall through to defaults
+
+	try {
+		readConfig(config_file);
+		config_loaded = true;
+		std::cout << "Loaded configuration from: " << config_file << std::endl;
+	} catch (...) {
+		// Fall through to defaults if file doesn't exist or has errors
+		if (!inifile.empty()) {
+			std::cerr << "Warning: Could not load " << config_file << ", using defaults" << std::endl;
 		}
 	}
 
