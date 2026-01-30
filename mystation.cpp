@@ -119,7 +119,6 @@ const std::vector<float> &MyStation::get_buffer()
 
 				// Notify app to advance (if app is set)
 				// This would be used for UI updates
-				// In Python: if not (self.app is None): self.app.advance()
 			}
 		}
 	}

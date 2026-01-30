@@ -115,13 +115,12 @@ Contest Simulator is built from the ground up in C++ with:
 - **Signal processing**: AGC, bandwidth filtering, modulation
 - **RtAudio** for low-latency audio output
 
-The codebase is migrated from Python (cwsim by W9CF), which was inspired by Morse Runner (VE3NEA).
+The codebase is inspired by Morse Runner (VE3NEA) and cwsim (W9CF).
 
 ## Documentation
 
 - **[WINKEYER_SETUP.md](WINKEYER_SETUP.md)** - Detailed setup guide
 - **[CLAUDE.md](CLAUDE.md)** - Architecture and developer documentation
-- **Python reference**: `cwsim/python/` - Original implementation
 
 ## Project Status
 
@@ -141,15 +140,15 @@ GPL v3 (inherited from Morse Runner and cwsim)
 ## Credits
 
 - **Original concept**: Morse Runner by VE3NEA
-- **Python implementation**: cwsim by W9CF (Kevin Schmidt)
-- **C++ migration**: This project
+- **cwsim**: W9CF (Kevin Schmidt)
+- **C++ implementation**: This project
 
 ## Contributing
 
-This is a personal project migrated from Python. For questions or issues, see the documentation files.
+This is a personal project. For questions or issues, see the documentation files.
 
 ## See Also
 
 - **Morse Runner**: The original Windows-based contest simulator
-- **cwsim**: Python implementation this is based on
+- **cwsim**: The implementation this is based on
 - **WinKeyer**: K1EL's hardware CW keyer and protocol standard

@@ -4,19 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **CW (Morse code) contest simulator** migrated from Python to C++. The application (Contest Simulator) simulates amateur radio stations participating in contests, generating Morse code audio signals with realistic characteristics like QSB (fading), timing variations, and signal processing.
+This is a **CW (Morse code) contest simulator**. The application (Contest Simulator) simulates amateur radio stations participating in contests, generating Morse code audio signals with realistic characteristics like QSB (fading), timing variations, and signal processing.
 
 **Architecture**: The simulator operates as a **virtual contest radio** controlled via **WinKeyer3 protocol**, allowing operators to use their preferred contest logging software (N1MM+, Win-Test, etc.) while practicing against simulated pile-ups.
 
-**Source Material**: The `cwsim/` directory contains the reference Python implementation. This Python version is itself based on Morse Runner by VE3NEA, licensed under GPL v3.
+**Source Material**: Based on Morse Runner by VE3NEA, licensed under GPL v3.
 
-### Migration Status
+### Components
 
-**Complete Implementation:**
+**Implementation:**
 - Station base class (`station.h`, `station.cpp`) - State machine, message handling, audio generation
 - Morse code generation (`keyer.h`, `keyer.cpp`) - Complete with timing and envelopes
 - Audio processing (`audioprocess.h`, `audioprocess.cpp`) - MovAvg, Modulator, AGC
-- QSB fading simulation (`qsb.h`, `qsb.cpp`) - Complete with MovAvgComplex, Gaussian process generation
+- QSB fading simulation (`qsb.h`, `qsb.cpp`) - Complete with Gaussian process generation
 - Call sign database (`calllist.h`, `calllist.cpp`) - Loads MASTER.SCP, random selection
 - Random number generation (`random.h`, `random.cpp`) - Uniform, normal, Rayleigh, Poisson distributions
 - DxStation (`dxstation.h`, `dxstation.cpp`) - Simulated contest stations with full QSO logic
@@ -32,12 +32,6 @@ This is a **CW (Morse code) contest simulator** migrated from Python to C++. The
 **Not Implemented:**
 - GUI interface (not needed for WinKeyer mode)
 - Prefix database for geographic information
-
-**Python Reference**: When implementing missing features, consult `cwsim/python/` for the reference implementation. Key files:
-- `contest.py` - Main contest orchestrator, audio pipeline, station lifecycle
-- `mystation.py` - User's station implementation
-- `cwsim.py` - Complete GUI with PyQt6
-- `prefix.py` - Call sign prefix database
 
 ## Usage
 
@@ -111,15 +105,14 @@ gcc -o gentables gentables.c -lm
 - Uses static morse code mapping table
 
 **Audio Signal Processing** (`audioprocess.h`, `audioprocess.cpp`)
-- `MovAvg`: Moving average filter for signal smoothing (real values)
+- `MovAvg`: Complex-valued moving average filter for bandwidth filtering and QSB generation
 - `Modulator`: Modulates complex signals to audio frequency with pitch control
 - `Agc`: Automatic Gain Control - logarithmic compression with shaped attack/hold/decay
 
 **QSB (Fading) Simulation** (`qsb.h`, `qsb.cpp`)
 - Simulates realistic signal fading effects using Gaussian process
-- `MovAvgComplex`: Complex-valued moving average for QSB generation
-- Creates smooth, correlated gain variations with configurable bandwidth
-- Applies gain with linear interpolation for smooth transitions
+- Uses 3-stage `MovAvg` filters for smooth correlated gain variations
+- Configurable bandwidth, linear interpolation for smooth transitions
 
 **DxStation System** (`dxstation.h`, `dxstation.cpp`, `dxoper.h`, `dxoper.cpp`)
 - `DxStation`: Simulated contest station with QSB, variable pitch, amplitude, WPM
@@ -225,7 +218,7 @@ The `station::get_buffer()` method provides audio data in chunks, managing the s
 **Completed Features:**
 - Audio generation uses phase accumulation to avoid discontinuities
 - AGC implementation complete with logarithmic compression and shaped envelope
-- QSB fading uses three-stage MovAvgComplex filters for Gaussian process
+- QSB fading uses three-stage MovAvg filters for Gaussian process
 - DxStation/DxOperator provide realistic contest participant simulation
 - QRN creates sparse atmospheric noise bursts (99% zero samples, 10^5-10^7 amplitude)
 - QRM creates persistent station interference with variable patience (1-5 transmissions)
@@ -246,6 +239,15 @@ The `station::get_buffer()` method provides audio data in chunks, managing the s
 - `station::get_buffer()` buffer overflow fixed: changed `std::max` to `std::min` on line 81
   - Bug was causing crashes after ~3 seconds when audio buffer copy exceeded vector bounds
   - Loop was attempting to read beyond `envelope.size()` and write beyond `buffer` capacity
+- `Modulator::modulate()` fixed: changed `resize(bufsize)` to `reserve(bufsize)` to prevent double-size output vector when combined with `push_back`
+- Thread safety: added `std::mutex` to Contest class protecting shared state accessed from both the RtAudio callback thread and the main thread (`getAudio()`, `dxCount()`, `onMeStartedSending()`, `onMeFinishedSending()`, `setCall()`, `setWpm()`, `time()`)
+- `Contest::setTqrm()` integer division fix: `_bufsize / _rate / _tqrm` (all integers) always truncated to 0, preventing QRM from ever triggering; fixed with float cast
+- `RNG::integers()` off-by-one: `random()` returning exactly 1.0 could produce `high` as result, causing out-of-bounds array access; added clamp to `high - 1`
+- `Contest::time()` added mutex lock for thread safety
+- `MyStation::updateCallInMessage()` added `envelope.size()` bounds check in comparison loop
+- `Keyer::setRisetime()` replaced float accumulation loop with integer loop to avoid floating-point drift
+- `QrmStation` constructor: added explicit `static_cast<int>` for `size_t` to `int` conversion
+- `station::tick()` added `timeout != NEVER` guard to prevent useless decrementing of INT32_MAX
 
 **Future Enhancements (Optional):**
 - Prefix database for call sign geography
