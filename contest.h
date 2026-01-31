@@ -76,7 +76,18 @@ public:
 	bool getCwreverse() const { return _cwreverse; }
 	void setCwreverse(bool cwreverse);
 
-	// Public members for GUI access
+	// Thread-safe wrappers for MyStation (lock audio_mutex before delegating)
+	void sendText(const std::string &msg);
+	void detectMessage(const std::string &msg);
+	void abortSend();
+	bool updateCallInMessage(const std::string &call);
+	bool isSending() const;
+
+	// Thread-safe QSO queue access
+	bool hasQso() const;
+	std::tuple<std::string, int, int> popQso();
+
+	// Public members (access only through wrappers from main thread)
 	MyStation *me;
 	std::vector<station*> stations;
 	std::queue<std::tuple<std::string, int, int>> qsoQueue;
@@ -168,7 +179,7 @@ private:
 	RtAudio *rtaudio;
 
 	// Thread synchronization for audio callback (mutable for const member functions)
-	mutable std::mutex audio_mutex;
+	mutable std::recursive_mutex audio_mutex;
 };
 
 #endif

@@ -49,7 +49,6 @@ void print_usage(const char *prog)
 void print_status(Contest *contest, WinKeyerServer *wk, CwdaemonServer *cw)
 {
 	auto [h, m, s] = contest->time();
-	int qsos = contest->qsoQueue.size();
 	int dx_count = contest->dxCount();
 
 	int wpm = 0;
@@ -60,10 +59,9 @@ void print_status(Contest *contest, WinKeyerServer *wk, CwdaemonServer *cw)
 	          << (h < 10 ? "0" : "") << h << ":"
 	          << (m < 10 ? "0" : "") << m << ":"
 	          << (s < 10 ? "0" : "") << s << "] "
-	          << "QSOs: " << qsos << " "
 	          << "DX: " << dx_count << " "
 	          << "WPM: " << wpm << " "
-	          << (contest->me->state == station_state::sending ? "TX" : "RX")
+	          << (contest->isSending() ? "TX" : "RX")
 	          << "          " << std::flush;
 }
 
@@ -162,7 +160,7 @@ int main(int argc, char **argv)
 			for (auto &c : upper) {
 				c = std::toupper(c);
 			}
-			contest.me->sendText(upper);
+			contest.sendText(upper);
 		};
 
 		winkeyer->onSpeedChange = [&contest](int wpm) {
@@ -190,7 +188,7 @@ int main(int argc, char **argv)
 			for (auto &c : upper) {
 				c = std::toupper(c);
 			}
-			contest.me->detectMessage(upper);
+			contest.detectMessage(upper);
 		};
 
 		cwdaemon->onTextToSend = [&contest](const std::string &text) {
@@ -198,7 +196,7 @@ int main(int argc, char **argv)
 			for (auto &c : upper) {
 				c = std::toupper(c);
 			}
-			contest.me->sendText(upper);
+			contest.sendText(upper);
 		};
 
 		cwdaemon->onSpeedChange = [&contest](int wpm) {
@@ -210,12 +208,12 @@ int main(int argc, char **argv)
 		};
 
 		cwdaemon->onAbort = [&contest]() {
-			contest.me->abortSend();
+			contest.abortSend();
 		};
 	}
 
 	// Track MyStation state for WinKeyer busy status
-	auto last_state = contest.me->state;
+	bool last_sending = contest.isSending();
 
 	// Start audio
 	std::cout << "Starting audio output...\n";
@@ -242,10 +240,12 @@ int main(int argc, char **argv)
 		}
 
 		// Update busy status if MyStation state changed (WinKeyer only)
-		if (winkeyer && contest.me->state != last_state) {
-			bool is_sending = (contest.me->state == station_state::sending);
-			winkeyer->setBusy(is_sending);
-			last_state = contest.me->state;
+		if (winkeyer) {
+			bool is_sending = contest.isSending();
+			if (is_sending != last_sending) {
+				winkeyer->setBusy(is_sending);
+				last_sending = is_sending;
+			}
 		}
 
 		// Print status every ~100ms
@@ -255,9 +255,8 @@ int main(int argc, char **argv)
 		}
 
 		// Check for completed QSOs
-		while (!contest.qsoQueue.empty()) {
-			auto qso = contest.qsoQueue.front();
-			contest.qsoQueue.pop();
+		while (contest.hasQso()) {
+			auto qso = contest.popQso();
 			std::cout << "\n[QSO] " << std::get<0>(qso)
 			          << " " << std::get<1>(qso)
 			          << " " << std::get<2>(qso) << std::endl;

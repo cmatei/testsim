@@ -65,9 +65,9 @@ void station::set_pitch(float pitch_)
 
 const std::vector<float> &station::get_bfo()
 {
-	size_t i = 0;
-	for (auto v = fbfo; v < fbfo + (bufsize - 0.5) * dphi; v += dphi)
-		bfo[i++] = v;
+	for (size_t i = 0; i < bufsize; i++) {
+		bfo[i] = fbfo + i * dphi;
+	}
 
 	fbfo += bufsize * dphi;
 	fbfo = std::fmod(fbfo, 2.0 * M_PI);

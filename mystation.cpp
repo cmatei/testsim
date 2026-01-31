@@ -1,6 +1,7 @@
 #include "mystation.h"
 #include "contest.h"
 #include <algorithm>
+#include <cmath>
 
 MyStation::MyStation(RNG *rng, Keyer *keyer, Contest *contest_,
                      const std::string &myCall, float pitch_, int wpm_,
@@ -89,10 +90,6 @@ void MyStation::detectMessage(const std::string &msg)
 	if (msg.rfind("AGN", 0) != std::string::npos) {
 		msgs.push_back(station_message::agn);
 	}
-
-	for (auto &m : msgs) {
-		printf("MSG: %d\n", m);
-	}
 }
 
 void MyStation::sendText(const std::string &msg)
@@ -145,12 +142,27 @@ void MyStation::sendNextPiece()
 		return;
 	}
 
-	if (pieces[0] != "@") {
-		// Send the text piece
-		station::sendText(pieces[0]);
-	} else {
-		// Send the call sign
-		station::sendText(hiscall);
+	bool continuation = (state == station_state::sending);
+
+	std::string text = (pieces[0] != "@") ? pieces[0] : hiscall;
+
+	// For word space, strip leading space (we insert the gap ourselves)
+	bool word_space = continuation && !text.empty() && text[0] == ' ';
+	if (word_space) {
+		text = text.substr(1);
+	}
+
+	// Reset sendpos when starting a new piece
+	sendpos = 0;
+
+	station::sendText(text);
+
+	// Prepend inter-piece silence for continuation pieces
+	// Previous piece ends with ~2 dits (samples-nr + samples-nr from keyer)
+	if (continuation) {
+		size_t dit = static_cast<size_t>(std::round(1.2 * rate / wpm));
+		size_t gap = word_space ? 5 * dit : 1 * dit;
+		envelope.insert(envelope.begin(), gap, 0.0f);
 	}
 }
 

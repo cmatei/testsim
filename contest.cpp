@@ -154,7 +154,7 @@ void Contest::setPitch(float pitch)
 
 void Contest::setCall(const std::string &call)
 {
-//	std::lock_guard<std::mutex> lock(audio_mutex);
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
 
 	_call = call;
 	if (me != nullptr) {
@@ -164,7 +164,7 @@ void Contest::setCall(const std::string &call)
 
 void Contest::setWpm(int wpm)
 {
-//	std::lock_guard<std::mutex> lock(audio_mutex);
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
 
 	_wpm = wpm;
 	if (me != nullptr) {
@@ -191,7 +191,7 @@ double Contest::rfgfun(double a0, double a1)
 
 void Contest::getAudio(float *outdata, unsigned int nframes)
 {
-	std::lock_guard<std::mutex> lock(audio_mutex);
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
 
 	if (nframes != _bufsize) {
 		std::cerr << "Warning: buffer size mismatch in getAudio: "
@@ -351,7 +351,7 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 
 int Contest::dxCount() const
 {
-//	std::lock_guard<std::mutex> lock(audio_mutex);
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
 
 	int count = 0;
 	for (auto s : stations) {
@@ -365,7 +365,7 @@ int Contest::dxCount() const
 
 void Contest::onMeStartedSending()
 {
-//	std::lock_guard<std::mutex> lock(audio_mutex);
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
 
 	for (auto s : stations) {
 		s->processEvent(station_event::mestarted);
@@ -374,7 +374,7 @@ void Contest::onMeStartedSending()
 
 void Contest::onMeFinishedSending()
 {
-//	std::lock_guard<std::mutex> lock(audio_mutex);
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
 
 	// Create new calling stations in pileup mode
 	if (mode != RunMode::single && mode != RunMode::single_qsonr) {
@@ -474,7 +474,7 @@ void Contest::stop()
 
 std::tuple<int, int, int> Contest::time() const
 {
-//	std::lock_guard<std::mutex> lock(audio_mutex);
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
 	int s = static_cast<int>(bufcount * _bufsize / _rate);
 	int m = s / 60;
 	s = s % 60;
@@ -635,4 +635,50 @@ void Contest::writeConfig(const std::string &filename)
 	file << "savewave=" << (savewave ? 1 : 0) << "\n";
 	file << "saveini=" << (saveini ? 1 : 0) << "\n";
 	file << "savesummary=" << (savesummary ? 1 : 0) << "\n";
+}
+
+// Thread-safe wrappers for MyStation access from main thread
+
+void Contest::sendText(const std::string &msg)
+{
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
+	me->sendText(msg);
+}
+
+void Contest::detectMessage(const std::string &msg)
+{
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
+	me->detectMessage(msg);
+}
+
+void Contest::abortSend()
+{
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
+	me->abortSend();
+}
+
+bool Contest::updateCallInMessage(const std::string &call)
+{
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
+	return me->updateCallInMessage(call);
+}
+
+bool Contest::isSending() const
+{
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
+	return me->state == station_state::sending;
+}
+
+bool Contest::hasQso() const
+{
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
+	return !qsoQueue.empty();
+}
+
+std::tuple<std::string, int, int> Contest::popQso()
+{
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
+	auto qso = qsoQueue.front();
+	qsoQueue.pop();
+	return qso;
 }
