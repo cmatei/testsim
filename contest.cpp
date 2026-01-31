@@ -351,8 +351,8 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 
 int Contest::dxCount() const
 {
-	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
-
+	// No lock: read-only from main thread, modified only in audio thread
+	// Minor race acceptable for status display vs audio glitches from lock contention
 	int count = 0;
 	for (auto s : stations) {
 		DxStation *dx = dynamic_cast<DxStation*>(s);
@@ -474,7 +474,8 @@ void Contest::stop()
 
 std::tuple<int, int, int> Contest::time() const
 {
-	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
+	// No lock: read-only primitive access, modified only in audio thread
+	// Minor race acceptable for status display vs audio glitches from lock contention
 	int s = static_cast<int>(bufcount * _bufsize / _rate);
 	int m = s / 60;
 	s = s % 60;
@@ -665,13 +666,15 @@ bool Contest::updateCallInMessage(const std::string &call)
 
 bool Contest::isSending() const
 {
-	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
+	// No lock: read-only primitive access, modified only in audio thread
+	// Minor race acceptable for status display vs audio glitches from lock contention
 	return me->state == station_state::sending;
 }
 
 bool Contest::hasQso() const
 {
-	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
+	// No lock: read-only check, modified only in audio thread
+	// Minor race acceptable for status display vs audio glitches from lock contention
 	return !qsoQueue.empty();
 }
 

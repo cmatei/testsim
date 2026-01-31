@@ -55,40 +55,35 @@ void MyStation::detectMessage(const std::string &msg)
 	if ((msg.rfind("CQ ", 0) != std::string::npos) ||
 	    (msg.rfind("TEST ", 0) != std::string::npos)) {
 		msgs.push_back(station_message::cq);
-	}
-
-	// if it starts with 5NN it's a nr repeat
-	if (msg.rfind("5NN ", 0) != std::string::npos) {
+	} else 	if (msg.rfind("5NN ", 0) != std::string::npos) {
+		// if it starts with 5NN it's a nr repeat
 		msgs.push_back(station_message::nr);
-	}
+	} else if (msg.find(" 5NN ") != std::string::npos) {
+		// if the 5NN is in the middle, <his> comes first
 
-	// if the 5NN is in the middle, <his> comes first
-	if (msg.find(" 5NN ") != std::string::npos) {
 		hiscall = msg.substr(0, msg.find(" "));
 		msgs.push_back(station_message::hiscall);
 		msgs.push_back(station_message::nr);
-	}
-
-	if (msg == "TU" || (msg.rfind("TU ", 0) != std::string::npos)) {
+	} else 	if (msg == "TU" || (msg.rfind("TU ", 0) != std::string::npos)) {
 		msgs.push_back(station_message::tu);
-	}
-
-	if (msg.rfind(" TU") != std::string::npos) {
+	} else if (msg.rfind(" TU") != std::string::npos) {
 		hiscall = msg.substr(0, msg.find(" "));
 		msgs.push_back(station_message::hiscall);
 		msgs.push_back(station_message::tu);
-	}
-
-	if (msg.rfind("?", 0) != std::string::npos) {
+	} else if (msg.rfind("?", 0) != std::string::npos) {
 		msgs.push_back(station_message::qm);
-	}
-
-	if (msg.rfind("NR?", 0) != std::string::npos) {
+	} else if (msg.rfind("NR?", 0) != std::string::npos) {
 		msgs.push_back(station_message::nrqm);
-	}
-
-	if (msg.rfind("AGN", 0) != std::string::npos) {
+	} else if (msg.rfind("AGN", 0) != std::string::npos) {
 		msgs.push_back(station_message::agn);
+	} else if (msg != "") {
+		// partial call ?!
+		hiscall = msg;
+		msgs.push_back(station_message::hiscall);
+		printf("pushing partial hiscall %s\n", hiscall.c_str());
+		fflush(stdout);
+	} else {
+		msgs.push_back(station_message::nomsg);
 	}
 }
 

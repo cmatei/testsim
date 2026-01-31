@@ -30,7 +30,7 @@ enum class OperatorState {
 
 class DxOperator {
 public:
-	static constexpr int FULL_PATIENCE = 5;
+	static constexpr int FULL_PATIENCE = 8;
 
 	DxOperator(RNG *rng, int minutes, station *cqstn, const std::string &call,
 	           int skills, double s2bfac, bool lids, double rptProb,
