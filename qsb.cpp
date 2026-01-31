@@ -42,9 +42,11 @@ void QSB::setBandwidth(float bw)
 	av2 = new MovAvg(gain_bufsize, navg);
 	av3 = new MovAvg(gain_bufsize, navg);
 
-	// Initialize gain buffer
-	gain_buf.clear();
-	gain_buf.reserve(gain_bufsize);
+	// Initialize gain buffer and staging buffers
+	gain_buf.resize(gain_bufsize);
+	_r.resize(gain_bufsize);
+	_stage1.resize(gain_bufsize);
+	_stage2.resize(gain_bufsize);
 
 	// Initialize: need to advance past 3*navg samples to get stable output
 	size_t bufptr = 3 * navg;
@@ -66,24 +68,21 @@ void QSB::setBandwidth(float bw)
 void QSB::newBuf()
 {
 	// Generate random complex numbers with uniform distribution in [-1, 1] + i[-1, 1]
-	std::vector<std::complex<double>> r;
-	r.reserve(gain_bufsize);
-
 	for (size_t i = 0; i < gain_bufsize; i++) {
 		double real = 2.0 * rng->uniform() - 1.0;
 		double imag = 2.0 * rng->uniform() - 1.0;
-		r.push_back(std::complex<double>(real, imag));
+		_r[i] = std::complex<double>(real, imag);
 	}
 
 	// Apply three stages of moving average filtering
-	auto stage1 = av1->avg(r);
-	auto stage2 = av2->avg(stage1);
-	auto stage3 = av3->avg(stage2);
+	// Ping-pong: _r -> _stage1 -> _stage2 -> _r (reuse _r for final output)
+	av1->avg(_r.data(), _stage1.data());
+	av2->avg(_stage1.data(), _stage2.data());
+	av3->avg(_stage2.data(), _r.data());
 
 	// Take absolute value and normalize
-	gain_buf.clear();
-	for (const auto &c : stage3) {
-		gain_buf.push_back(std::abs(c) * norm);
+	for (size_t i = 0; i < gain_bufsize; i++) {
+		gain_buf[i] = std::abs(_r[i]) * norm;
 	}
 
 	gain_bufptr = 0;

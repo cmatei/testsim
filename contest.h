@@ -157,6 +157,13 @@ private:
 	std::vector<double> _bufindex;
 	float _extratime;
 
+	// Pre-allocated audio buffers (avoid heap allocation in callback)
+	std::vector<std::complex<double>> _reim;
+	std::vector<std::complex<double>> _filtered;
+	std::vector<double> _audio;
+	std::vector<double> _agc_audio;
+	std::vector<station*> _toRemove;
+
 	// RtAudio handle
 	RtAudio *rtaudio;
 

@@ -50,6 +50,9 @@ station::station(RNG *rng_, Keyer *keyer_, size_t bufsize_, size_t rate_)
 	sendpos = 0;
 
 	timeout = NEVER;
+
+	buffer.resize(bufsize, 0.0);
+	bfo.resize(bufsize, 0.0);
 }
 
 void station::set_pitch(float pitch_)
@@ -67,10 +70,9 @@ void station::set_pitch(float pitch_)
 
 const std::vector<float> &station::get_bfo()
 {
-	bfo.clear();
-
+	size_t i = 0;
 	for (auto v = fbfo; v < fbfo + (bufsize - 0.5) * dphi; v += dphi)
-		bfo.push_back(v);
+		bfo[i++] = v;
 
 	fbfo += bufsize * dphi;
 	fbfo = std::fmod(fbfo, 2.0 * M_PI);
@@ -81,7 +83,7 @@ const std::vector<float> &station::get_bfo()
 
 const std::vector<float> &station::get_buffer()
 {
-	buffer.assign(bufsize, 0.0);
+	std::fill(buffer.begin(), buffer.end(), 0.0);
 
 	size_t max = std::min(sendpos + bufsize, envelope.size());
 

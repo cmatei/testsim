@@ -13,33 +13,29 @@ MovAvg::MovAvg(size_t bufsize_, size_t navg_)
 	std::fill(prev.begin(), prev.end(), std::complex<double>(0.0, 0.0));
 }
 
-std::vector<std::complex<double>> MovAvg::avg(const std::vector<std::complex<double>> &buf)
+void MovAvg::avg(const std::complex<double> *in, std::complex<double> *out)
 {
-	assert(buf.size() == bufsize);
-
 	std::complex<double> sum(0.0, 0.0);
-	std::vector<std::complex<double>> res;
+	size_t k = 0;
 
 	// Copy new data into prev buffer at the end
 	for (size_t i = navg - 1; i < bufsize + navg - 1; i++) {
-		prev[i] = buf[i - navg + 1];
+		prev[i] = in[i - navg + 1];
 	}
 
 	// Calculate moving average
 	for (size_t i = 0; i < bufsize + navg; i++) {
 		sum += prev[i];
 		if (i >= navg) {
-			res.push_back(sum / static_cast<double>(navg));
+			out[k++] = sum / static_cast<double>(navg);
 			sum -= prev[i - navg];
 		}
 	}
 
 	// Save the tail for next iteration
 	for (size_t i = bufsize - navg; i < bufsize; i++) {
-		prev[i - bufsize + navg] = buf[i];
+		prev[i - bufsize + navg] = in[i];
 	}
-
-	return res;
 }
 
 
@@ -72,21 +68,13 @@ void Modulator::setPitch(double pitch)
 }
 
 
-std::vector<double> Modulator::modulate(std::vector<std::complex<double>> buf)
+void Modulator::modulate(const std::complex<double> *in, double *out)
 {
-	std::vector<double> res;
-
-	assert(bufsize == buf.size());
-
-	res.reserve(bufsize);  // Reserve space instead of resize to avoid double allocation
-
-	for (auto i = 0; i < bufsize; i++) {
-		res.push_back(std::imag(ex[i] * buf[i]));
+	for (size_t i = 0; i < bufsize; i++) {
+		out[i] = std::imag(ex[i] * in[i]);
 	}
 
 	std::rotate(std::begin(ex), std::begin(ex) + shift, std::end(ex));
-
-	return res;
 }
 
 Agc::Agc(size_t bufsize, double maxout, double maxoutnorm, double noiseindb, double noiseoutdb, size_t attacksamples, size_t holdsamples):
@@ -136,57 +124,45 @@ Agc::Agc(size_t bufsize, double maxout, double maxoutnorm, double noiseindb, dou
 
 		ind.push_back(row);
 	}
+
+	gain.resize(bufsize);
 }
 
 
-std::vector<double> Agc::process(std::vector<double> buf)
+void Agc::process(const double *in, double *out)
 {
-	std::vector<double> res;
-
 	// Shift buffers to make room for new data (each buffer has its own size!)
-	for (auto i = 0; i < valbufsize - bufsize; i++) {
+	for (size_t i = 0; i < valbufsize - bufsize; i++) {
 		valbuf[i] = valbuf[bufsize + i];
 	}
 
-	for (auto i = 0; i < magbufsize - bufsize; i++) {
+	for (size_t i = 0; i < magbufsize - bufsize; i++) {
 		magbuf[i] = magbuf[bufsize + i];
 	}
 
 	// Add new data to the end of buffers
-	for (auto i = 0; i < bufsize; i++) {
-		valbuf[valbufsize - bufsize + i] = buf[i];
-		magbuf[magbufsize - bufsize + i] = std::abs(buf[i]);
+	for (size_t i = 0; i < bufsize; i++) {
+		valbuf[valbufsize - bufsize + i] = in[i];
+		magbuf[magbufsize - bufsize + i] = std::abs(in[i]);
 	}
 
 	// Calculate gain for each output sample
-	// This implements: gain = np.ravel(np.outer(magbuf, agcshape))[ind].max(1)
-	// The outer product creates a matrix where element [i,j] = magbuf[i] * agcshape[j]
-	// We use the precomputed index matrix to find the maximum along diagonal stripes
-	std::vector<double> gain;
-	gain.reserve(bufsize);
-
+	size_t k = 0;
 	for (const auto& row : ind) {
 		double maxval = 0.0;
 		for (auto idx : row) {
-			// Compute the value from the raveled outer product
-			// In a raveled matrix with agcshape.size() columns:
-			// element at position idx corresponds to magbuf[row] * agcshape[col]
 			size_t outrow = idx / agcshape.size();
 			size_t outcol = idx % agcshape.size();
 			double val = magbuf[outrow] * agcshape[outcol];
 			maxval = std::max(maxval, val);
 		}
-		gain.push_back(maxval);
+		gain[k++] = maxval;
 	}
 
 	// Apply gain transformation: gain = maxoutnorm * (1 - exp(-gain/beta)) / gain
-	// Clamp gain to minimum value to avoid division by zero
-	res.reserve(bufsize);
-	for (auto i = 0; i < bufsize; i++) {
+	for (size_t i = 0; i < bufsize; i++) {
 		double g = std::max(gain[i], 1.0e-8);
 		g = maxoutnorm * (1.0 - std::exp(-g / beta)) / g;
-		res.push_back(g * valbuf[i]);
+		out[i] = g * valbuf[i];
 	}
-
-	return res;
 }

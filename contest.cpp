@@ -30,8 +30,8 @@ Contest::Contest(RNG *rng, const std::string &inifile)
 
 	if (!config_loaded) {
 		// Default configuration
-		_rate = 11025;
-		_bufsize = 512;
+		_rate = 44100;
+		_bufsize = 2048;
 		_call = "P55CF";
 		_wpm = 40;
 		fast = 1.1;
@@ -88,6 +88,13 @@ Contest::Contest(RNG *rng, const std::string &inifile)
 	for (size_t i = 0; i < _bufsize; i++) {
 		_bufindex[i] = static_cast<double>(i);
 	}
+
+	// Pre-allocate audio processing buffers
+	_reim.resize(_bufsize);
+	_filtered.resize(_bufsize);
+	_audio.resize(_bufsize);
+	_agc_audio.resize(_bufsize);
+	_toRemove.reserve(32);
 
 	// Initialize RtAudio
 	rtaudio = new RtAudio();
@@ -187,7 +194,8 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 	std::lock_guard<std::mutex> lock(audio_mutex);
 
 	if (nframes != _bufsize) {
-		std::cerr << "Warning: buffer size mismatch in getAudio" << std::endl;
+		std::cerr << "Warning: buffer size mismatch in getAudio: "
+		          << nframes << " != " << _bufsize << std::endl;
 		return;
 	}
 
@@ -197,11 +205,10 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 	const double NOISEAMP = 6000.0;
 
 	// Generate complex white noise
-	std::vector<std::complex<double>> reim(_bufsize);
 	for (size_t i = 0; i < _bufsize; i++) {
 		double r_real = _rng->uniform();
 		double r_imag = _rng->uniform();
-		reim[i] = std::complex<double>(
+		_reim[i] = std::complex<double>(
 			-1.5 * NOISEAMP + 3.0 * NOISEAMP * r_real,
 			-1.5 * NOISEAMP + 3.0 * NOISEAMP * r_imag
 		);
@@ -211,7 +218,7 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 	if (qrn) {
 		for (size_t i = 0; i < _bufsize; i++) {
 			if (_rng->uniform() < 0.01) {
-				reim[i] += 60.0 * NOISEAMP * (_rng->uniform() - 0.5);
+				_reim[i] += 60.0 * NOISEAMP * (_rng->uniform() - 0.5);
 			}
 		}
 		// Occasionally create a QRN station (burst)
@@ -229,7 +236,7 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 
 	// Mix in audio from all DX stations
 	double ritfac = 2.0 * M_PI * rit / _rate;
-	std::vector<station*> toRemove;
+	_toRemove.clear();
 
 	for (auto s : stations) {
 		if (s->state == station_state::deleteme) {
@@ -241,14 +248,14 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 					// GUI notification would go here
 				}
 			}
-			toRemove.push_back(s);
+			_toRemove.push_back(s);
 		} else if (s->state == station_state::sending) {
 			const std::vector<float> &buf = s->get_buffer();
 			const std::vector<float> &bfo = s->get_bfo();
 
 			for (size_t i = 0; i < _bufsize && i < buf.size() && i < bfo.size(); i++) {
 				double phase = static_cast<double>(bfo[i]) - _bufindex[i] * ritfac - _ritph;
-				reim[i] += static_cast<double>(buf[i]) * std::exp(std::complex<double>(0, -phase));
+				_reim[i] += static_cast<double>(buf[i]) * std::exp(std::complex<double>(0, -phase));
 			}
 		}
 	}
@@ -258,7 +265,7 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 	_ritph = std::fmod(_ritph, 2.0 * M_PI);
 
 	// Remove deleted stations
-	for (auto s : toRemove) {
+	for (auto s : _toRemove) {
 		stations.erase(std::remove(stations.begin(), stations.end(), s), stations.end());
 		delete s;
 	}
@@ -271,14 +278,14 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 			_rfg[0] = _rfg0;
 			for (size_t i = 0; i < _bufsize; i++) {
 				_rfg[i + 1] = rfgfun(1.0 - buf[i], _rfg[i]);
-				reim[i] = mvol * buf[i] * std::complex<double>(1, 1) + _rfg[i] * reim[i];
+				_reim[i] = mvol * buf[i] * std::complex<double>(1, 1) + _rfg[i] * _reim[i];
 			}
 			_rfg0 = _rfg[_bufsize];
 		} else if (_rfg0 < 0.999) {
 			_rfg[0] = _rfg0;
 			for (size_t i = 0; i < _bufsize; i++) {
 				_rfg[i + 1] = rfgfun(1.0, _rfg[i]);
-				reim[i] = _rfg[i] * reim[i];
+				_reim[i] = _rfg[i] * _reim[i];
 			}
 			_rfg0 = _rfg[_bufsize];
 		} else {
@@ -287,29 +294,30 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 	} else if (me->state == station_state::sending) {
 		const std::vector<float> &buf = me->get_buffer();
 		for (size_t i = 0; i < _bufsize; i++) {
-			reim[i] = mvol * buf[i] * std::complex<double>(1, 1);
+			_reim[i] = mvol * buf[i] * std::complex<double>(1, 1);
 		}
 	}
 
 	// Apply bandwidth filtering (3-stage complex moving average)
-	std::vector<std::complex<double>> filtered = _m1->avg(reim);
-	filtered = _m2->avg(filtered);
-	filtered = _m3->avg(filtered);
+	// Ping-pong between _reim and _filtered to avoid extra copies
+	_m1->avg(_reim.data(), _filtered.data());
+	_m2->avg(_filtered.data(), _reim.data());
+	_m3->avg(_reim.data(), _filtered.data());
 
 	// Apply filter gain
-	for (auto &v : filtered) {
-		v *= _fgain;
+	for (size_t i = 0; i < _bufsize; i++) {
+		_filtered[i] *= _fgain;
 	}
 
 	// Modulate to audio frequency
-	std::vector<double> audio = modulator->modulate(filtered);
+	modulator->modulate(_filtered.data(), _audio.data());
 
 	// Apply AGC
-	std::vector<double> agc_audio = _m5->process(audio);
+	_m5->process(_audio.data(), _agc_audio.data());
 
 	// Copy to output buffer
 	for (size_t i = 0; i < _bufsize; i++) {
-		outdata[i] = static_cast<float>(agc_audio[i]);
+		outdata[i] = static_cast<float>(_agc_audio[i]);
 	}
 
 	// Tick all stations
@@ -432,7 +440,7 @@ void Contest::start()
 	parameters.firstChannel = 0;
 
 	RtAudio::StreamOptions options;
-	options.flags = RTAUDIO_MINIMIZE_LATENCY;
+	options.numberOfBuffers = 4;
 
 	unsigned int bufferFrames = _bufsize;
 

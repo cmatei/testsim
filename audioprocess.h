@@ -9,7 +9,7 @@
 class MovAvg {
 public:
 	MovAvg(size_t bufsize, size_t navg);
-	std::vector<std::complex<double>> avg(const std::vector<std::complex<double>> &buf);
+	void avg(const std::complex<double> *in, std::complex<double> *out);
 
 private:
 	size_t bufsize, navg;
@@ -24,7 +24,7 @@ public:
 	void setPitch(double pitch);
 	void setReverse(bool rev) { reverse = rev; setPitch(pitch); }
 
-	std::vector<double> modulate(std::vector<std::complex<double>> buf);
+	void modulate(const std::complex<double> *in, double *out);
 
 private:
 	size_t bufsize, samplerate, shift;
@@ -38,14 +38,14 @@ class Agc {
 public:
 	Agc(size_t bufsize, double maxout = 20000.0, double maxoutnorm = 0.67, double noiseindb = 76.0, double noiseoutdb = 76.0, size_t attacksamples = 155, size_t holdsamples = 155);
 
-	std::vector<double> process(std::vector<double> buf);
+	void process(const double *in, double *out);
 private:
 
 	size_t bufsize, agcmid, magbufsize, valbufsize;
 	double maxoutnorm;
 	double noisein, noiseout, beta;
 
-	std::vector<double> agcshape, magbuf, valbuf;
+	std::vector<double> agcshape, magbuf, valbuf, gain;
 
 	std::vector<std::vector<unsigned long>> ind;
 };

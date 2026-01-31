@@ -33,6 +33,9 @@ private:
 	double norm;
 	double gain0;  // Previous gain value for interpolation
 	size_t navg;
+
+	// Pre-allocated buffers for newBuf() filtering stages
+	std::vector<std::complex<double>> _r, _stage1, _stage2;
 };
 
 #endif
