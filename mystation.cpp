@@ -56,7 +56,13 @@ void MyStation::detectMessage(const std::string &msg)
 		msgs.push_back(station_message::cq);
 	}
 
-	if (msg.find("5NN ") != std::string::npos) {
+	// if it starts with 5NN it's a nr repeat
+	if (msg.rfind("5NN ", 0) != std::string::npos) {
+		msgs.push_back(station_message::nr);
+	}
+
+	// if the 5NN is in the middle, <his> comes first
+	if (msg.find(" 5NN ") != std::string::npos) {
 		hiscall = msg.substr(0, msg.find(" "));
 		msgs.push_back(station_message::hiscall);
 		msgs.push_back(station_message::nr);
@@ -82,6 +88,10 @@ void MyStation::detectMessage(const std::string &msg)
 
 	if (msg.rfind("AGN", 0) != std::string::npos) {
 		msgs.push_back(station_message::agn);
+	}
+
+	for (auto &m : msgs) {
+		printf("MSG: %d\n", m);
 	}
 }
 

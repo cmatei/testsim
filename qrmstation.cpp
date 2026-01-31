@@ -31,9 +31,9 @@ QrmStation::QrmStation(RNG *rng, Keyer *keyer, CallList *callList,
 	// Random amplitude (5000-30000 range)
 	this->amplitude = 5000.0 + 25000.0 * rng->uniform();
 
-	// Random pitch offset (-300 to +300 Hz)
+	// Random pitch offset from center frequency (-300 to +300 Hz)
 	int pitch_offset = rng->integers(-300, 301);
-	this->set_pitch(500.0 + pitch_offset);
+	this->set_pitch(pitch_offset);
 
 	// Random WPM (30-50)
 	this->wpm = rng->integers(30, 51);

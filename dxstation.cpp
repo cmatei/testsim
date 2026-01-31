@@ -49,12 +49,9 @@ DxStation::DxStation(RNG *rng, Keyer *keyer, CallList *callList, station *cqstn_
 	// Set amplitude with random variation
 	this->amplitude = 9000.0 + 18000.0 * (1.0 + std::sin(M_PI * (rng->uniform() - 0.5)));
 
-	// Set pitch with random variation (normal distribution around 0, ±150 Hz, wrapped to ±300)
-	double pitch_offset = rng->normal(0.0, 150.0);
-	printf("pitch_offset = %.2g\n", pitch_offset);
-	while (pitch_offset > 300.0) pitch_offset -= 600.0;
-	while (pitch_offset < -300.0) pitch_offset += 600.0;
-	this->set_pitch(500.0 + pitch_offset);
+	// Set pitch offset from center (0 = on frequency, heard at modulator pitch)
+	double pitch_offset = std::clamp(rng->normal(0.0, 50.0), -300.0, 300.0);
+	this->set_pitch(pitch_offset);
 
 	// Start in Copying state (listening to CQ station)
 	this->state = station_state::copying;

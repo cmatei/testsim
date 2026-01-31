@@ -57,6 +57,7 @@ public:
 	station(RNG *rng, Keyer *keyer_, size_t bufsize_ = 512, size_t rate_ = 11025);
 
 	void set_pitch(float pitch_);
+	float get_pitch() const { return pitch; }
 
 	const std::vector<float> &get_bfo();
 	const std::vector<float> &get_buffer();
