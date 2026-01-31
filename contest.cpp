@@ -182,11 +182,11 @@ void Contest::setCwreverse(bool cwreverse)
 
 double Contest::rfgfun(double a0, double a1)
 {
-	// Fast attack, slow decay for QSK RF gain
-	if (a0 < a1) {
-		a1 = a0 + _qskdecayfactor * (a1 - a0);
-	}
-	return a1;
+	// Fast attack: instantly mute when target drops below current
+	if (a0 < a1)
+		a1 = a0;
+	// Slow decay: exponentially recover toward target
+	return a1 + _qskdecayfactor * (a0 - a1);
 }
 
 void Contest::getAudio(float *outdata, unsigned int nframes)
