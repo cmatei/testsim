@@ -1,6 +1,6 @@
-# Contest Simulator - Contest Simulator for CW Operators
+# Contest Simulator - CW Contest Simulator for Training
 
-A realistic CW (Morse code) contest simulator that integrates with popular contest logging software via WinKeyer3 protocol.
+A realistic CW (Morse code) contest simulator that integrates with popular contest logging software via cwdaemon protocol.
 
 ## What is Contest Simulator?
 
@@ -8,9 +8,9 @@ Contest Simulator simulates a complete contest environment with:
 - **Realistic pile-ups** with multiple calling stations
 - **Signal propagation effects**: QSB (fading), QRN (atmospheric noise), QRM (interference)
 - **Operator behavior simulation**: Mistakes, impatience, lid behavior
-- **Real logging software integration**: Use N1MM+, Win-Test, or any WinKeyer-compatible logger
+- **Logger integration**: Works with TLF, xlog, CQRLog, and other cwdaemon-compatible loggers
 
-Instead of a built-in GUI, Contest Simulator acts as a **virtual contest radio** that your logging software controls, providing a more realistic practice environment.
+Instead of a built-in GUI, Contest Simulator acts as a **virtual contest radio** that your logging software controls via network CW keyer protocol, providing a more realistic practice environment.
 
 ## Features
 
@@ -23,11 +23,11 @@ Instead of a built-in GUI, Contest Simulator acts as a **virtual contest radio**
 - Variable sending speeds and timing
 
 ### Logger Integration
-- WinKeyer3 USB protocol over virtual serial port
-- Works with N1MM+, Win-Test, TR4W, and other WinKeyer-compatible loggers
+- cwdaemon protocol (UDP network keyer)
+- Works with TLF, xlog, CQRLog, Tucnak, and other cwdaemon-compatible loggers
 - Real-time CW keying from your logger
-- Busy/breakin status reporting
-- Speed synchronization
+- Speed control and inline speed changes (+/-)
+- Special character mapping for prosigns (AR, BT, SK, etc.)
 
 ### Configurable Parameters
 - Contest mode (pile-up or single-caller)
@@ -46,32 +46,32 @@ Instead of a built-in GUI, Contest Simulator acts as a **virtual contest radio**
 
 ```bash
 # Debian/Ubuntu
-sudo apt-get install build-essential cmake librtaudio-dev socat
+sudo apt-get install build-essential cmake librtaudio-dev
 
 # Fedora
-sudo dnf install gcc-c++ cmake rtaudio-devel socat
+sudo dnf install gcc-c++ cmake rtaudio-devel
 ```
 
 ### Build
 ```bash
-cd /home/cmatei/qt-tests
 cmake .
 make
 ```
 
 ### Run
 ```bash
-# Terminal 1: Create virtual serial ports
-socat -d -d pty,raw,echo=0,link=/tmp/logger pty,raw,echo=0,link=/tmp/testsim
+# Start Contest Simulator with cwdaemon protocol
+./testsim --protocol cwdaemon --cwdaemon-port 6789
 
-# Terminal 2: Start Contest Simulator
-./testsim --serial /tmp/testsim
-
-# Configure your logger to use /tmp/logger as WinKeyer port
+# Configure your logger to connect to cwdaemon:
+#   Host: localhost
+#   Port: 6789
+#
+# For TLF, add to your contest config:
+#   CWDAEMON=localhost:6789
+#
 # Start operating!
 ```
-
-**For detailed setup instructions, see [WINKEYER_SETUP.md](WINKEYER_SETUP.md)**
 
 ## Configuration
 
@@ -100,7 +100,7 @@ savewave=1  # Record audio to timestamped WAV files
 
 Run with config:
 ```bash
-./testsim --serial /tmp/testsim --config contest.ini
+./testsim --protocol cwdaemon --cwdaemon-port 6789 --config contest.ini
 ```
 
 ## Usage Tips
@@ -127,18 +127,18 @@ The codebase is inspired by Morse Runner (VE3NEA) and cwsim (W9CF).
 
 ## Documentation
 
-- **[WINKEYER_SETUP.md](WINKEYER_SETUP.md)** - Detailed setup guide
 - **[CLAUDE.md](CLAUDE.md)** - Architecture and developer documentation
 
 ## Project Status
 
 **Production Ready**: All core functionality is complete:
 - ✅ Contest simulator engine
-- ✅ WinKeyer3 protocol implementation
+- ✅ cwdaemon protocol implementation
 - ✅ Audio generation and mixing
 - ✅ Station lifecycle management
 - ✅ Configuration system
 - ✅ CLI daemon application
+- ✅ WAV recording and QSO logging
 - ✅ No GUI dependencies (Qt/Marble removed)
 
 ## License
@@ -159,4 +159,4 @@ This is a personal project. For questions or issues, see the documentation files
 
 - **Morse Runner**: The original Windows-based contest simulator
 - **cwsim**: The implementation this is based on
-- **WinKeyer**: K1EL's hardware CW keyer and protocol standard
+- **cwdaemon**: Morse code keyer daemon for amateur radio programs
