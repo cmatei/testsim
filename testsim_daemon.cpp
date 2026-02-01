@@ -254,7 +254,8 @@ int main(int argc, char **argv)
 			auto qso = contest.popQso();
 			std::cout << "\n[QSO] " << std::get<0>(qso)
 			          << " " << std::get<1>(qso)
-			          << " " << std::get<2>(qso) << std::endl;
+			          << " " << std::get<2>(qso)
+				  << " (" << std::get<3>(qso) << "wpm)" << std::endl;
 		}
 
 		// Sleep 10ms

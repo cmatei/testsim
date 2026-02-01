@@ -327,9 +327,7 @@ station_message DxOperator::getReply()
 		break;
 
 	case OperatorState::NeedCallNr:
-		// When responding to partial call, always send just the call (no nr)
-		// regardless of norepeats setting, because we're not certain the call is for us
-		if (rng->uniform() < 0.5) {
+		if (norepeats || rng->uniform() < 0.5) {
 			res = station_message::demycall1;
 		} else {
 			res = station_message::demycall2;
