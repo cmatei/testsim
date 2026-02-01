@@ -34,7 +34,7 @@ public:
 
 	DxOperator(RNG *rng, int minutes, station *cqstn, const std::string &call,
 	           int skills, double s2bfac, bool lids, double rptProb,
-	           int wpm, double fast, double slow, bool isSingle, int norepeats,
+	           int wpm, double fast, double slow, bool isSingle, int norepeats, int longnr,
 	           OperatorState state = OperatorState::NeedPrevEnd);
 
 	// Timing methods
@@ -73,6 +73,7 @@ private:
 	double rptProb;
 	double s2bfac;
 	int norepeats;  // 0=normal (varied messages, may repeat), 1=no repeats (shortest messages)
+	int longnr;     // 0=time-based serials, 1=random 4-digit serials
 };
 
 #endif

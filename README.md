@@ -36,6 +36,9 @@ Instead of a built-in GUI, Contest Simulator acts as a **virtual contest radio**
 - Operator skill levels
 - Contest duration
 - Your call sign, WPM, pitch, bandwidth
+- Serial number generation (time-based or random 4-digit for training)
+- WAV file recording for practice sessions
+- Automatic QSO logging to CSV files
 
 ## Quick Start
 
@@ -87,10 +90,12 @@ qrm=1
 qsb=1
 activity=5
 lids=1
+longnr=1    # Generate 4-digit serial numbers (1-9999) for training
 
 [Contest]
 duration=60
 mode=RunMode.pileup
+savewave=1  # Record audio to timestamped WAV files
 ```
 
 Run with config:
@@ -105,6 +110,9 @@ Run with config:
 - **QSB on** makes copying more challenging
 - **Single mode** for one-at-a-time QSO practice
 - **Adjust bandwidth** to change selectivity (100-600 Hz)
+- **Enable longnr=1** to practice copying 4-digit serial numbers (1-9999)
+- **Enable savewave=1** to record practice sessions to WAV files for later review
+- **QSO logs** are automatically saved to CSV files (contest_YYYYMMDD_HHMMSS.log) containing UTC time, callsign, and serial number for each completed contact
 
 ## Architecture
 

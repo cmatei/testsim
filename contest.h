@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <atomic>
+#include <fstream>
 
 // Forward declaration for RtAudio
 class RtAudio;
@@ -118,6 +119,7 @@ public:
 	float tqrm;
 	int duration;
 	int norepeats;
+	int longnr;
 	RunMode mode;
 	bool cwreverse;
 	bool savewave;
@@ -188,6 +190,26 @@ private:
 
 	// Thread synchronization for audio callback (mutable for const member functions)
 	mutable std::recursive_mutex audio_mutex;
+
+	// WAV recording state
+	std::ofstream _wavfile;
+	std::string _wavfilename;
+	size_t _samples_written;
+
+	// WAV recording helper methods
+	void openWavFile();
+	void closeWavFile();
+	void writeWavHeader(size_t num_samples);
+	void writeAudioToWav(const std::vector<double> &audio);
+
+	// QSO logging state
+	std::ofstream _logfile;
+	std::string _logfilename;
+
+	// QSO logging helper methods
+	void openLogFile();
+	void closeLogFile();
+	void logQso(const std::string &call, int rst, int nr, int wpm);
 };
 
 #endif

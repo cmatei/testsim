@@ -5,7 +5,8 @@
 DxStation::DxStation(RNG *rng, Keyer *keyer, CallList *callList, station *cqstn_,
                      int minutes, bool lids, double lidNrProb, double lidRstProb,
                      bool qsb, double flutterProb, double rptProb, double fast,
-                     double slow, bool isSingle, int norepeats, size_t bufsize, size_t rate)
+                     double slow, bool isSingle, int norepeats, int longnr,
+                     size_t bufsize, size_t rate)
 	: station(rng, keyer, bufsize, rate), cqstn(cqstn_), qsb_effect(nullptr),
 	  called(false)
 {
@@ -17,7 +18,7 @@ DxStation::DxStation(RNG *rng, Keyer *keyer, CallList *callList, station *cqstn_
 	oper = new DxOperator(rng, minutes, cqstn, this->mycall,
 	                      rng->integers(1, 4),  // skills 1-3
 	                      static_cast<double>(rate) / bufsize,  // s2bfac
-	                      lids, rptProb, cqstn->wpm, fast, slow, isSingle, norepeats,
+	                      lids, rptProb, cqstn->wpm, fast, slow, isSingle, norepeats, longnr,
 	                      OperatorState::NeedPrevEnd);
 
 	// Set up exchange number (possibly with error for lids)
@@ -141,9 +142,16 @@ void DxStation::processEvent(station_event evt)
 		break;
 
 	case station_event::mestarted:
-		// CQ station started sending
+		// CQ station started sending - assume they're working someone else
 		if (this->state != station_state::sending) {
 			this->state = station_state::copying;
+			// Back off if not already engaged in QSO with MyStation
+			// Only stations in NeedPrevEnd or NeedQso should back off
+			// Stations in NeedNr/NeedCall/NeedCallNr/NeedEnd are already engaged
+			if (oper->state == OperatorState::NeedPrevEnd ||
+			    oper->state == OperatorState::NeedQso) {
+				oper->state = OperatorState::NeedPrevEnd;
+			}
 		}
 		this->timeout = NEVER;
 		break;

@@ -12,7 +12,8 @@ public:
 	          int minutes = 0, bool lids = true, double lidNrProb = 0.1,
 	          double lidRstProb = 0.03, bool qsb = true, double flutterProb = 0.3,
 	          double rptProb = 0.1, double fast = 1.1, double slow = 0.9,
-	          bool isSingle = false, int norepeats = 0, size_t bufsize = 512, size_t rate = 11025);
+	          bool isSingle = false, int norepeats = 0, int longnr = 0,
+	          size_t bufsize = 512, size_t rate = 11025);
 
 	~DxStation();
 

@@ -5,13 +5,16 @@
 #include <algorithm>
 #include <iostream>
 #include <fstream>
+#include <ctime>
+#include <cstring>
 
 Contest::Contest(RNG *rng, const std::string &inifile)
 	: me(nullptr), modulator(nullptr), _m5(nullptr),
 	  _m1(nullptr), _m2(nullptr), _m3(nullptr),
 	  _rng(rng), _keyer(nullptr), _callList(nullptr),
 	  rtaudio(nullptr), bufcount(0), seconds(0.0),
-	  _rfg0(1.0), _ritph(0.0), _extratime(0.0)
+	  _rfg0(1.0), _ritph(0.0), _extratime(0.0),
+	  _samples_written(0)
 {
 	// Try to read config file (default to contest.ini if not specified)
 	std::string config_file = inifile.empty() ? "contest.ini" : inifile;
@@ -56,6 +59,7 @@ Contest::Contest(RNG *rng, const std::string &inifile)
 		_tqrm = 240;
 		duration = 60;
 		norepeats = 0;
+		longnr = 0;
 		mode = RunMode::pileup;
 		_cwreverse = false;
 		savewave = false;
@@ -323,6 +327,11 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 	// Apply AGC
 	_m5->process(_audio.data(), _agc_audio.data());
 
+	// Record to WAV file if enabled
+	if (savewave) {
+		writeAudioToWav(_agc_audio);
+	}
+
 	// Copy to output buffer
 	for (size_t i = 0; i < _bufsize; i++) {
 		outdata[i] = static_cast<float>(_agc_audio[i]);
@@ -340,6 +349,8 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 		if (dx != nullptr && dx->oper->state == OperatorState::Done) {
 			auto qsoData = dx->dataToLastQso();
 			qsoQueue.emplace(qsoData.call, qsoData.rst, qsoData.nr, qsoData.wpm);
+			// Log the QSO (only if nr > 0)
+			logQso(qsoData.call, qsoData.rst, qsoData.nr, qsoData.wpm);
 			// GUI notification would go here
 		}
 	}
@@ -449,6 +460,12 @@ void Contest::start()
 		                    _rate, &bufferFrames, &Contest::audioCallback,
 		                    static_cast<void*>(this), &options);
 		rtaudio->startStream();
+
+		// Start WAV recording if enabled
+		openWavFile();
+
+		// Start QSO logging
+		openLogFile();
 	} catch (RtAudioErrorType &e) {
 		std::cerr << "RtAudio error on start" << std::endl;
 	}
@@ -458,6 +475,12 @@ void Contest::stop()
 {
 	if (rtaudio && rtaudio->isStreamOpen()) {
 		try {
+			// Stop WAV recording before stopping audio stream
+			closeWavFile();
+
+			// Close QSO log file
+			closeLogFile();
+
 			rtaudio->stopStream();
 			rtaudio->closeStream();
 		} catch (RtAudioErrorType &e) {
@@ -563,6 +586,7 @@ void Contest::readConfig(const std::string &filename)
 			else if (key == "rptprob") rptProb = std::stof(value);
 			else if (key == "tqrm") _tqrm = std::stof(value);
 			else if (key == "norepeats") norepeats = std::stoi(value);
+			else if (key == "longnr") longnr = std::stoi(value);
 		} else if (section == "Contest") {
 			if (key == "duration") duration = std::stoi(value);
 			else if (key == "mode") {
@@ -622,7 +646,8 @@ void Contest::writeConfig(const std::string &filename)
 	file << "lidnrprob=" << lidNrProb << "\n";
 	file << "rptprob=" << rptProb << "\n";
 	file << "flutterprob=" << flutterProb << "\n";
-	file << "norepeats=" << norepeats << "\n\n";
+	file << "norepeats=" << norepeats << "\n";
+	file << "longnr=" << longnr << "\n\n";
 
 	file << "[Contest]\n";
 	file << "duration=" << duration << "\n";
@@ -638,6 +663,188 @@ void Contest::writeConfig(const std::string &filename)
 	file << "savewave=" << (savewave ? 1 : 0) << "\n";
 	file << "saveini=" << (saveini ? 1 : 0) << "\n";
 	file << "savesummary=" << (savesummary ? 1 : 0) << "\n";
+}
+
+// WAV recording implementation
+
+void Contest::openWavFile()
+{
+	if (!savewave) return;
+
+	// Generate timestamp-based filename
+	std::time_t now = ::time(nullptr);
+	struct tm *timeinfo = ::localtime(&now);
+	char timestamp[32];
+	std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", timeinfo);
+
+	_wavfilename = std::string("contest_") + timestamp + ".wav";
+
+	// Open file in binary mode
+	_wavfile.open(_wavfilename, std::ios::binary);
+
+	if (!_wavfile.is_open()) {
+		std::cerr << "Error: Could not open WAV file " << _wavfilename << std::endl;
+		savewave = false;  // Disable recording on failure
+		return;
+	}
+
+	// Write placeholder header (44 bytes)
+	// Will be rewritten with correct size in closeWavFile()
+	char header[44] = {0};
+	_wavfile.write(header, 44);
+
+	_samples_written = 0;
+
+	std::cout << "Recording audio to: " << _wavfilename << std::endl;
+}
+
+void Contest::writeAudioToWav(const std::vector<double> &audio)
+{
+	if (!_wavfile.is_open()) return;
+
+	// Convert double samples to 16-bit PCM
+	// Audio range: approximately [-1.0, 1.0] after AGC
+	// Map to int16 range: [-32768, 32767]
+
+	for (size_t i = 0; i < audio.size(); i++) {
+		// Clamp to prevent overflow
+		double sample = std::clamp(audio[i], -1.0, 1.0);
+
+		// Scale to int16 range
+		int16_t pcm_sample = static_cast<int16_t>(sample * 32767.0);
+
+		// Write as little-endian (standard for WAV)
+		char bytes[2];
+		bytes[0] = pcm_sample & 0xFF;         // Low byte
+		bytes[1] = (pcm_sample >> 8) & 0xFF;  // High byte
+
+		_wavfile.write(bytes, 2);
+	}
+
+	_samples_written += audio.size();
+}
+
+void Contest::closeWavFile()
+{
+	if (!_wavfile.is_open()) return;
+
+	// Flush any buffered data
+	_wavfile.flush();
+
+	// Rewrite header with correct sizes
+	writeWavHeader(_samples_written);
+
+	_wavfile.close();
+
+	std::cout << "Recording stopped: " << _wavfilename
+	          << " (" << _samples_written << " samples, "
+	          << (_samples_written / static_cast<double>(_rate)) << " seconds)" << std::endl;
+}
+
+void Contest::writeWavHeader(size_t num_samples)
+{
+	if (!_wavfile.is_open()) return;
+
+	// Seek to beginning of file
+	_wavfile.seekp(0, std::ios::beg);
+
+	const uint16_t num_channels = 1;
+	const uint16_t bits_per_sample = 16;
+	const uint32_t sample_rate = static_cast<uint32_t>(_rate);
+	const uint32_t byte_rate = sample_rate * num_channels * bits_per_sample / 8;
+	const uint16_t block_align = num_channels * bits_per_sample / 8;
+	const uint32_t data_size = num_samples * num_channels * bits_per_sample / 8;
+	const uint32_t chunk_size = 36 + data_size;
+
+	// Helper lambda for writing little-endian values
+	auto write_u32 = [this](uint32_t value) {
+		char bytes[4];
+		bytes[0] = value & 0xFF;
+		bytes[1] = (value >> 8) & 0xFF;
+		bytes[2] = (value >> 16) & 0xFF;
+		bytes[3] = (value >> 24) & 0xFF;
+		_wavfile.write(bytes, 4);
+	};
+
+	auto write_u16 = [this](uint16_t value) {
+		char bytes[2];
+		bytes[0] = value & 0xFF;
+		bytes[1] = (value >> 8) & 0xFF;
+		_wavfile.write(bytes, 2);
+	};
+
+	// RIFF header
+	_wavfile.write("RIFF", 4);
+	write_u32(chunk_size);
+	_wavfile.write("WAVE", 4);
+
+	// fmt subchunk
+	_wavfile.write("fmt ", 4);
+	write_u32(16);  // Subchunk size for PCM
+	write_u16(1);   // Audio format (1 = PCM)
+	write_u16(num_channels);
+	write_u32(sample_rate);
+	write_u32(byte_rate);
+	write_u16(block_align);
+	write_u16(bits_per_sample);
+
+	// data subchunk
+	_wavfile.write("data", 4);
+	write_u32(data_size);
+
+	// Header is now 44 bytes total
+}
+
+// QSO logging implementation
+
+void Contest::openLogFile()
+{
+	// Generate timestamp-based filename (same timestamp format as WAV file)
+	std::time_t now = ::time(nullptr);
+	struct tm *timeinfo = ::localtime(&now);
+	char timestamp[32];
+	std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", timeinfo);
+
+	_logfilename = std::string("contest_") + timestamp + ".log";
+
+	// Open file in text mode
+	_logfile.open(_logfilename, std::ios::out);
+
+	if (!_logfile.is_open()) {
+		std::cerr << "Error: Could not open log file " << _logfilename << std::endl;
+		return;
+	}
+
+	// Write CSV header
+	_logfile << "UTC Time,Callsign,Serial Number" << std::endl;
+
+	std::cout << "Logging QSOs to: " << _logfilename << std::endl;
+}
+
+void Contest::logQso(const std::string &call, int rst, int nr, int wpm)
+{
+	// Only log valid QSOs (non-zero serial numbers)
+	if (nr == 0 || !_logfile.is_open()) {
+		return;
+	}
+
+	// Get current UTC time
+	std::time_t now = ::time(nullptr);
+	struct tm *timeinfo = ::gmtime(&now);  // Use gmtime for UTC
+	char timestr[32];
+	std::strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", timeinfo);
+
+	// Write log entry: UTC timestamp, callsign, serial number
+	_logfile << timestr << "," << call << "," << nr << std::endl;
+	_logfile.flush();  // Ensure it's written immediately
+}
+
+void Contest::closeLogFile()
+{
+	if (_logfile.is_open()) {
+		_logfile.close();
+		std::cout << "QSO log closed: " << _logfilename << std::endl;
+	}
 }
 
 // Thread-safe wrappers for MyStation access from main thread
@@ -701,7 +908,7 @@ void Contest::createPendingStations()
 		DxStation *s = new DxStation(_rng, _keyer, _callList, me,
 			bufcount * _bufsize / (60.0 * _rate),
 			lids, lidNrProb, lidRstProb, qsb, flutterProb,
-			rptProb, fast, slow, is_single, norepeats, _bufsize, _rate);
+			rptProb, fast, slow, is_single, norepeats, longnr, _bufsize, _rate);
 		stations.push_back(s);
 
 		// Trigger newly created stations to start calling

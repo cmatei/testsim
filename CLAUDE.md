@@ -29,6 +29,22 @@ This is a **CW (Morse code) contest simulator**. The application (Contest Simula
 - CLI application (`testsim_daemon.cpp`) - Production daemon
 - Configuration file handling (INI reader/writer)
 
+**WAV Recording:**
+- WAV file recording (`contest.h`, `contest.cpp`) - Records final mixed audio output to timestamped WAV files
+  - Format: 16-bit PCM, mono, sample rate from config (typically 44100 Hz)
+  - Activated by `savewave=1` in contest.ini
+  - Automatic timestamped filenames (e.g., `contest_20260201_143052.wav`)
+  - Recording starts with Contest::start() and stops with Contest::stop()
+  - Captures audio after AGC processing (final output quality)
+
+**QSO Logging:**
+- QSO text logging (`contest.h`, `contest.cpp`) - Logs completed QSOs to timestamped CSV files
+  - Format: CSV with columns: UTC Time, Callsign, Serial Number
+  - Automatic timestamped filenames matching WAV files (e.g., `contest_20260201_143052.log`)
+  - Only logs valid QSOs (non-zero serial numbers)
+  - Logging starts with Contest::start() and stops with Contest::stop()
+  - CSV format for easy import into spreadsheets
+
 **Not Implemented:**
 - GUI interface (not needed for WinKeyer mode)
 - Prefix database for geographic information
@@ -119,7 +135,13 @@ gcc -o gentables gentables.c -lm
 - `DxStation`: Simulated contest station with QSB, variable pitch, amplitude, WPM
 - `DxOperator`: AI state machine with 8 states (NeedPrevEnd, NeedQso, NeedNr, etc.)
 - Edit distance algorithm for call sign matching with "lid" behavior
-- Variable patience and skill levels for realistic operator simulation
+- Partial call recognition: matches any substring (prefix, middle, or suffix) of the full call
+- Realistic pileup behavior: stations go quiet (NeedPrevEnd) when user works someone else, wake up after TU
+- Variable patience (minimum 4-8 attempts) and skill levels for realistic operator simulation
+- `norepeats` mode: when enabled, stations send compact exchanges without repetition
+- `longnr` mode: serial number generation
+  - When disabled (0): time-based serials that grow during contest (1 + random × minutes × skill)
+  - When enabled (1): random 4-digit serials (1-9999) for better copy training
 
 **Interference Simulation**
 - `QrnStation` (`qrnstation.h`, `qrnstation.cpp`): Atmospheric noise (sparse bursts)
@@ -127,10 +149,10 @@ gcc -o gentables gentables.c -lm
 
 **MyStation** (`mystation.h`, `mystation.cpp`)
 - User's station implementation
-- `detectMessage()`: parses outgoing text to guess message type (CQ, TU, exchange, AGN, etc.) so DxOperator state machines can react appropriately via `Contest::onMeFinishedSending()`. Called automatically by `sendText()` for simple messages, or explicitly before segmented sends (e.g. cwdaemon inline speed changes) to detect on the full unsplit text
-- `sendText()`: splits text on `<his>` placeholders into pieces for dynamic call updates; calls `detectMessage()` automatically when `msgs` is empty (no prior explicit detection)
+- **Accumulate-then-detect message parsing**: `sendText()` accumulates text in `full_text` across multiple calls, then `detectAndSetMessages()` parses the complete message to determine type (CQ, TU, exchange, AGN, etc.). Detection happens in main thread to avoid string operations in audio callback.
+- `sendText()`: splits text on `<his>` placeholders into pieces for dynamic call updates; accumulates full text and detects message type on each call
 - Real-time call sign updates while transmitting
-- Abort functionality for stopping mid-transmission
+- Abort functionality for stopping mid-transmission (clears accumulated text)
 - Contest notifications on transmission start/finish
 
 **Network Keyer Interfaces** (`winkeyer.h`, `winkeyer.cpp`)
@@ -147,7 +169,7 @@ gcc -o gentables gentables.c -lm
   - Implements cwdaemon protocol over UDP socket
   - Allows Linux contest loggers (TLF, xlog, CQRLog, etc.) to control the simulator
   - ESC-based command protocol for speed, PTT, abort, etc.
-  - Inline speed changes with +/- characters: text is split on +/- boundaries, each segment sent separately via `onTextToSend` with `onSpeedChange` between them; `onDetectMessage` called first with the full composed text so MyStation detects message type correctly; abort (ESC-4) restores WPM to pre-inline-change value (`base_wpm`)
+  - Inline speed changes with +/- characters: text is split on +/- boundaries, each segment sent separately via `onTextToSend` with `onSpeedChange` between them; MyStation's accumulate-then-detect automatically handles message type detection across split segments; abort (ESC-4) restores WPM to pre-inline-change value (`base_wpm`)
   - Special character mapping for prosigns (AR, BT, SK, etc.)
   - UdpTransport: UDP datagram communication with recvfrom/sendto
   - Default port: 6789
@@ -180,6 +202,9 @@ gcc -o gentables gentables.c -lm
 1. Text message → Morse encoder (Keyer)
 2. Morse pattern → Envelope shaper (rise/fall times)
 3. Envelope → BFO (Beat Frequency Oscillator) generation with configurable pitch
+   - Phase accumulation maintains continuity within buffers (unwrapped phase)
+   - Only `fbfo` is wrapped to [0, 2π) at buffer boundaries for next buffer
+   - Ensures click-free audio across full ±5000 Hz frequency range
 4. Buffer-based audio generation for RtAudio streaming
 5. Optional AGC and filtering (MovAvg, Agc classes)
 
@@ -232,22 +257,48 @@ The `station::get_buffer()` method provides audio data in chunks, managing the s
 ## Implementation Notes
 
 **Completed Features:**
-- Audio generation uses phase accumulation to avoid discontinuities
+- Audio generation uses phase accumulation with verified continuity (±5000 Hz range, zero discontinuities)
 - AGC implementation complete with logarithmic compression and shaped envelope
 - QSB fading uses three-stage MovAvg filters for Gaussian process
-- DxStation/DxOperator provide realistic contest participant simulation
+- DxStation/DxOperator provide realistic contest participant simulation:
+  - Partial call recognition (substring matching at any position)
+  - Realistic pileup behavior:
+    - Stations not yet engaged back off (NeedPrevEnd) when hearing MyStation transmit
+    - Stations already engaged in QSO (NeedNr/NeedCall/NeedCallNr/NeedEnd) continue listening
+    - Prevents interference with ongoing QSOs while allowing active QSOs to complete
+    - Wake up on CQ, TU, or NIL messages (or if they hear their own call)
+  - Variable patience (4-8 minimum attempts), skill levels, "lid" behavior
+  - **Patience reset**: When a station hears their call (full or partial match), patience resets to maximum (8) - simulates operator confidence when being called
+  - **AGN/NR? handling**: Stations repeat their exchange when receiving AGN or NR? messages, with patience reset to maximum
+  - norepeats mode for compact exchanges
 - QRN creates sparse atmospheric noise bursts (99% zero samples, 10^5-10^7 amplitude)
 - QRM creates persistent station interference with variable patience (1-5 transmissions)
-- MyStation enables dynamic call sign updates while transmitting via piece-based message sending
+- MyStation enables dynamic call sign updates while transmitting:
+  - Piece-based message sending with `<his>` placeholders
+  - Accumulate-then-detect message parsing (main thread, not audio callback)
+  - Real-time call updates during transmission
 - Contest class provides complete audio mixing pipeline:
   - White noise + QRN spikes
-  - Multi-station audio mixing with RIT support
+  - Multi-station audio mixing with RIT support (optimized trig calculations)
   - QSK RF gain control with fast attack/slow decay
   - 3-stage complex bandwidth filtering
   - Modulation and AGC
   - Automatic DxStation creation based on activity level (Poisson distribution)
+  - Deferred station creation (atomic flags, main thread allocation)
   - Station lifecycle management (create/tick/remove)
   - QSO completion tracking via queue
+- WAV file recording captures final mixed audio:
+  - 16-bit PCM WAV format with automatic timestamp-based filenames
+  - Records audio after AGC processing (in audio callback thread)
+  - Controlled by savewave config parameter
+  - Header written on file open, updated with correct sizes on close
+  - Direct write from audio callback (buffered by std::ofstream)
+- QSO logging to CSV files:
+  - Automatic timestamped CSV files matching WAV filenames
+  - Logs UTC timestamp, callsign, serial number for each completed QSO
+  - Only logs valid QSOs (non-zero serial numbers)
+  - Written from audio callback when QSO completes (OperatorState::Done)
+  - Immediate flush for data integrity
 
 **Bug Fixes Applied:**
 - MovAvg buffer size corrected from `bufsize + navg - 1` to `bufsize + navg`
@@ -264,8 +315,39 @@ The `station::get_buffer()` method provides audio data in chunks, managing the s
 - `Keyer::setRisetime()` replaced float accumulation loop with integer loop to avoid floating-point drift
 - `QrmStation` constructor: added explicit `static_cast<int>` for `size_t` to `int` conversion
 - `station::tick()` added `timeout != NEVER` guard to prevent useless decrementing of INT32_MAX
+- **BFO phase discontinuity fix** (`station::get_bfo()`): Critical audio quality fix eliminating clicks/pops in generated audio
+  - Original bug: phase wrapping during loop created jumps up to 150 radians between samples
+  - Fix: keep `bfo[]` values continuous (unwrapped) within each buffer, only wrap `fbfo` at buffer boundaries
+  - Verified across ±5000 Hz range with 414,639+ continuity checks (100% pass rate)
+  - Phase errors now at machine precision (~10^-7 radians)
+- **MyStation message detection refactoring**: Changed from dual-entry-point to accumulate-then-detect pattern
+  - Removed public `detectMessage()` method
+  - Added private `detectAndSetMessages()` called from main thread (not audio callback)
+  - `sendText()` accumulates text in `full_text` across multiple calls
+  - Detection uses early-return pattern for clarity
+  - Prevents string operations in audio callback thread
+- **DxOperator behavior improvements**: Realistic pileup simulation
+  - Partial call matching: changed from prefix-only to substring matching (any position in call)
+  - Stations go quiet (NeedPrevEnd) when user works someone else, preventing interference
+  - **mestarted event fix**: Stations in NeedPrevEnd or NeedQso states automatically back off when hearing MyStation transmit (assume busy with another QSO); stations already engaged (NeedNr/NeedCall/NeedCallNr/NeedEnd) continue listening to complete their QSO - prevents interference while allowing QSO completion
+  - **Patience reset on call heard**: When station hears their call (full or partial match), patience resets to FULL_PATIENCE (8) - simulates operator confidence and persistence when being called
+  - **AGN/NR? message handling**: Added handling for AGN and NR? messages - stations now repeat their exchange (by setting repeatCnt=2) and reset patience to maximum when receiving repeat requests
+  - TU message properly wakes up waiting stations
+  - Partial call replies never include NR (just send call again), regardless of norepeats mode
+  - Patience initialization: minimum 4-8 attempts (was 0-∞) prevents premature station removal
+  - Station creation: added `mefinished` event to new stations so they start calling immediately
+- **Performance optimizations**: Deferred station creation to avoid heap allocation in audio callback
+  - Atomic flags `_pendingStations` and `_pendingIsSingle` signal main thread
+  - `createPendingStations()` called from main loop, not audio callback
+  - Pre-allocated vectors: `stations.reserve(100)`, `msgs.reserve(4)`
+  - Optimized RIT phase calculation: replaced `std::exp()` with `cos()/sin()`
 
 **Future Enhancements (Optional):**
 - Prefix database for call sign geography
-- WAV file recording of contest audio
 - Statistics and performance analysis tools
+- WAV recording enhancements:
+  - Optional FLAC compression to save disk space
+  - Manual control via signal handlers (SIGUSR1)
+  - Ring buffer for real-time thread safety
+  - RIFF INFO metadata (call sign, mode, date)
+  - Auto-rotation for long contests

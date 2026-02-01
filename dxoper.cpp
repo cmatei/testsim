@@ -5,11 +5,11 @@
 DxOperator::DxOperator(RNG *rng_, int minutes_, station *cqstn_,
                        const std::string &call, int skills_, double s2bfac_,
                        bool lids_, double rptProb_, int wpm_, double fast_,
-                       double slow_, bool isSingle_, int norepeats_, OperatorState state_)
+                       double slow_, bool isSingle_, int norepeats_, int longnr_, OperatorState state_)
 	: rng(rng_), minutes(minutes_), cqstn(cqstn_), myCall(call),
 	  skills(skills_), isSingle(isSingle_), lids(lids_), wpm(wpm_),
 	  slow(slow_), fast(fast_), rptProb(rptProb_), s2bfac(s2bfac_),
-	  norepeats(norepeats_), state(state_), patience(0), repeatCnt(1)
+	  norepeats(norepeats_), longnr(longnr_), state(state_), patience(0), repeatCnt(1)
 {
 }
 
@@ -30,7 +30,13 @@ int DxOperator::getWpm()
 
 int DxOperator::getNr()
 {
-	return static_cast<int>(std::round(1 + rng->uniform() * minutes * skills));
+	if (longnr) {
+		// Generate random 4-digit numbers for training (1-9999)
+		return 1 + rng->integers(0, 9999);
+	} else {
+		// Time-based serials that grow over contest duration
+		return static_cast<int>(std::round(1 + rng->uniform() * minutes * skills));
+	}
 }
 
 int DxOperator::getReplyTimeout()
@@ -178,9 +184,9 @@ void DxOperator::msgReceived(const std::vector<station_message> &msgs)
 		} else if (state == OperatorState::NeedNr ||
 		           state == OperatorState::NeedCall ||
 		           state == OperatorState::NeedCallNr) {
-			state = OperatorState::Failed;
+			setState(OperatorState::Failed);
 		} else if (state == OperatorState::NeedEnd) {
-			state = OperatorState::Done;
+			setState(OperatorState::Done);
 		}
 		return;
 	}
@@ -194,7 +200,7 @@ void DxOperator::msgReceived(const std::vector<station_message> &msgs)
 		           state == OperatorState::NeedCall ||
 		           state == OperatorState::NeedCallNr ||
 		           state == OperatorState::NeedEnd) {
-			state = OperatorState::Failed;
+			setState(OperatorState::Failed);
 		}
 		return;
 	}
@@ -202,14 +208,18 @@ void DxOperator::msgReceived(const std::vector<station_message> &msgs)
 	if (contains(station_message::hiscall)) {
 		MyCallCorrect isme = isMyCall();
 		if (isme == MyCallCorrect::Yes) {
+			// Full match - reset patience to full
+			patience = FULL_PATIENCE;
 			if (state == OperatorState::NeedPrevEnd ||
 			    state == OperatorState::NeedQso ||
 			    state == OperatorState::NeedCallNr) {
 				setState(OperatorState::NeedNr);
 			} else if (state == OperatorState::NeedCall) {
-				setState(OperatorState::NeedEnd);
+  				setState(OperatorState::NeedEnd);
 			}
 		} else if (isme == MyCallCorrect::Almost) {
+			// Partial match - reset patience
+			patience = FULL_PATIENCE / 2;
 			if (state == OperatorState::NeedPrevEnd ||
 			    state == OperatorState::NeedQso ||
 			    state == OperatorState::NeedNr) {
@@ -217,16 +227,17 @@ void DxOperator::msgReceived(const std::vector<station_message> &msgs)
 			} else if (state == OperatorState::NeedEnd) {
 				setState(OperatorState::NeedCall);
 			}
-		} else { // No - call is not for me
+		} else {
+			// No - call is not for me
 			// When user calls someone else, go quiet and wait for QSO to finish
 			if (state == OperatorState::NeedQso ||
 			    state == OperatorState::NeedNr ||
 			    state == OperatorState::NeedCall ||
 			    state == OperatorState::NeedCallNr) {
-				state = OperatorState::NeedPrevEnd;
+				setState(OperatorState::NeedPrevEnd);
 			} else if (state == OperatorState::NeedEnd) {
 				// I'm waiting for TU but user is calling someone else - QSO failed
-				state = OperatorState::Failed;
+				setState(OperatorState::Failed);
 			}
 		}
 	}
@@ -239,20 +250,20 @@ void DxOperator::msgReceived(const std::vector<station_message> &msgs)
 		           state == OperatorState::NeedCall ||
 		           state == OperatorState::NeedCallNr) {
 			// User is telling someone else they worked them before - go quiet
-			state = OperatorState::NeedPrevEnd;
+			setState(OperatorState::NeedPrevEnd);
 		} else if (state == OperatorState::NeedEnd) {
 			// I'm the one being told B4 - fail the QSO
-			state = OperatorState::Failed;
+			setState(OperatorState::Failed);
 		}
 	}
 
 	if (contains(station_message::nr)) {
 		if (state == OperatorState::NeedQso) {
 			// Number sent but I haven't been called - must be for someone else
-			state = OperatorState::NeedPrevEnd;
+			setState(OperatorState::NeedPrevEnd);
 		} else if (state == OperatorState::NeedNr) {
 			// I was called with exact match, now receiving number
-			if (rng->uniform() >= rptProb) {
+			if (norepeats || rng->uniform() >= rptProb) {
 				setState(OperatorState::NeedEnd);
 			}
 		}
@@ -260,12 +271,23 @@ void DxOperator::msgReceived(const std::vector<station_message> &msgs)
 		// Station should just send their call again, not assume the nr is for them
 	}
 
+	if (contains(station_message::agn) || contains(station_message::nrqm)) {
+		// User is asking for a repeat
+		// Reset patience since they're actively working us
+		patience = FULL_PATIENCE / 2;
+
+		if (state == OperatorState::NeedEnd) {
+			setState(OperatorState::NeedEnd);
+		}
+		// In NeedNr state, we haven't sent exchange yet, so no need to repeat
+	}
+
 	if (contains(station_message::tu)) {
 		if (state == OperatorState::NeedPrevEnd) {
 			// QSO finished, ready to call again
 			setState(OperatorState::NeedQso);
 		} else if (state == OperatorState::NeedEnd) {
-			state = OperatorState::Done;
+			setState(OperatorState::Done);
 		}
 		// Note: stations in NeedNr/NeedCall/NeedCallNr shouldn't receive TU
 		// because they should have already gone to NeedPrevEnd when user called someone else
@@ -279,7 +301,7 @@ void DxOperator::msgReceived(const std::vector<station_message> &msgs)
 
 	// Non-lids give up on garbage
 	if (!lids && msgs.size() == 1 && contains(station_message::nomsg)) {
-		state = OperatorState::NeedPrevEnd;
+		setState(OperatorState::NeedPrevEnd);
 	}
 
 	//if (state != OperatorState::NeedPrevEnd) {
@@ -290,62 +312,59 @@ void DxOperator::msgReceived(const std::vector<station_message> &msgs)
 
 station_message DxOperator::getReply()
 {
-	station_message res = station_message::nomsg;
-
 	switch (state) {
 	case OperatorState::NeedPrevEnd:
 	case OperatorState::Done:
 	case OperatorState::Failed:
-		res = station_message::nomsg;
-		break;
+		return station_message::nomsg;
 
 	case OperatorState::NeedQso:
-		res = station_message::mycall;
-		break;
+		return station_message::mycall;
 
 	case OperatorState::NeedNr:
 		if (patience == (FULL_PATIENCE - 1) || rng->uniform() < 0.3) {
-			res = station_message::nrqm;
+			return station_message::nrqm;
 		} else {
-			res = station_message::agn;
+			return station_message::agn;
 		}
 		break;
 
+
 	case OperatorState::NeedCall:
 		if (norepeats) {
-			res = station_message::demycallnr1;
+			return station_message::demycallnr1;
 		} else {
 			double r1 = rng->uniform();
 			if (r1 < 0.5) {
-				res = station_message::demycallnr1;
+				return station_message::demycallnr1;
 			} else if (r1 < 0.625) {
-				res = station_message::demycallnr2;
+				return station_message::demycallnr2;
 			} else {
-				res = station_message::mycallnr2;
+				return station_message::mycallnr2;
 			}
 		}
 		break;
 
 	case OperatorState::NeedCallNr:
 		if (norepeats || rng->uniform() < 0.5) {
-			res = station_message::demycall1;
+			return station_message::demycall1;
 		} else {
-			res = station_message::demycall2;
+			return station_message::demycall2;
 		}
 		break;
 
 	case OperatorState::NeedEnd:
 		if (norepeats) {
-			res = station_message::r_nr;
+			return station_message::r_nr;
 		} else {
 			if (patience == (FULL_PATIENCE - 1) || rng->uniform() < 0.9) {
-				res = station_message::r_nr;
+				return station_message::r_nr;
 			} else {
-				res = station_message::r_nr2;
+				return station_message::r_nr2;
 			}
 		}
 		break;
 	}
 
-	return res;
+	return station_message::nomsg;
 }
