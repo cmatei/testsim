@@ -153,7 +153,10 @@ void Agc::process(const double *in, double *out)
 	for (size_t i = 0; i < bufsize; i++) {
 		double g = std::max(gain[i], 1.0e-8);
 		g = maxoutnorm * (1.0 - std::exp(-g / beta)) / g;
-		//out[i] = g * valbuf[agcmid + i];  // Fixed: apply gain to current sample, not old data
 		out[i] = g * valbuf[i];
+
+		// this "fix" is wrong, makes attack overshoot, actually read the code maybe :)
+		//out[i] = g * valbuf[agcmid + i];  // Fixed: apply gain to current sample, not old data
+
 	}
 }
