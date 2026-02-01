@@ -96,6 +96,9 @@ Contest::Contest(RNG *rng, const std::string &inifile)
 	_agc_audio.resize(_bufsize);
 	_toRemove.reserve(32);
 
+	// Pre-allocate stations vector to avoid reallocation in audio thread
+	stations.reserve(100);
+
 	// Initialize RtAudio
 	rtaudio = new RtAudio();
 }
@@ -255,7 +258,11 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 
 			for (size_t i = 0; i < _bufsize && i < buf.size() && i < bfo.size(); i++) {
 				double phase = static_cast<double>(bfo[i]) - _bufindex[i] * ritfac - _ritph;
-				_reim[i] += static_cast<double>(buf[i]) * std::exp(std::complex<double>(0, -phase));
+				// Optimize: exp(i*(-phase)) = cos(-phase) + i*sin(-phase) = cos(phase) - i*sin(phase)
+				double amplitude = static_cast<double>(buf[i]);
+				double c = std::cos(phase);
+				double s = std::sin(phase);
+				_reim[i] += std::complex<double>(amplitude * c, -amplitude * s);
 			}
 		}
 	}
@@ -336,15 +343,11 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 		}
 	}
 
-	// Handle single station mode
+	// Handle single station mode (defer creation to avoid heap allocation in audio callback)
 	if (mode == RunMode::single || mode == RunMode::single_qsonr) {
 		if (dxCount() == 0) {
-			DxStation *s = new DxStation(_rng, _keyer, _callList, me,
-				bufcount * _bufsize / (60.0 * _rate),
-				lids, lidNrProb, lidRstProb, qsb, flutterProb,
-				rptProb, fast, slow, true, _bufsize, _rate);
-			stations.push_back(s);
-			s->processEvent(station_event::mefinished);
+			_pendingStations.store(1, std::memory_order_release);
+			_pendingIsSingle.store(true, std::memory_order_release);
 		}
 	}
 }
@@ -376,7 +379,7 @@ void Contest::onMeFinishedSending()
 {
 	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
 
-	// Create new calling stations in pileup mode
+	// Defer station creation to main thread to avoid heap allocation in audio callback
 	if (mode != RunMode::single && mode != RunMode::single_qsonr) {
 		bool should_create = false;
 		for (auto msg : me->msgs) {
@@ -393,12 +396,8 @@ void Contest::onMeFinishedSending()
 
 		if (should_create) {
 			int newst = _rng->poisson(0.5 * activity);
-			for (int i = 0; i < newst; i++) {
-				stations.push_back(new DxStation(_rng, _keyer, _callList, me,
-					bufcount * _bufsize / (60.0 * _rate),
-					lids, lidNrProb, lidRstProb, qsb, flutterProb,
-					rptProb, fast, slow, false, _bufsize, _rate));
-			}
+			_pendingStations.store(newst, std::memory_order_release);
+			_pendingIsSingle.store(false, std::memory_order_release);
 		}
 	}
 
@@ -646,12 +645,6 @@ void Contest::sendText(const std::string &msg)
 	me->sendText(msg);
 }
 
-void Contest::detectMessage(const std::string &msg)
-{
-	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
-	me->detectMessage(msg);
-}
-
 void Contest::abortSend()
 {
 	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
@@ -684,4 +677,32 @@ std::tuple<std::string, int, int> Contest::popQso()
 	auto qso = qsoQueue.front();
 	qsoQueue.pop();
 	return qso;
+}
+
+void Contest::createPendingStations()
+{
+	// Check if there are pending stations to create (lock-free read)
+	int count = _pendingStations.load(std::memory_order_acquire);
+	if (count == 0) {
+		return;
+	}
+
+	// Reset pending count
+	_pendingStations.store(0, std::memory_order_release);
+	bool is_single = _pendingIsSingle.load(std::memory_order_acquire);
+
+	// Now create stations with mutex held
+	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
+
+	for (int i = 0; i < count; i++) {
+		DxStation *s = new DxStation(_rng, _keyer, _callList, me,
+			bufcount * _bufsize / (60.0 * _rate),
+			lids, lidNrProb, lidRstProb, qsb, flutterProb,
+			rptProb, fast, slow, is_single, _bufsize, _rate);
+		stations.push_back(s);
+
+		// Trigger newly created stations to start calling
+		// (They missed the mefinished event that was sent earlier in onMeFinishedSending)
+		s->processEvent(station_event::mefinished);
+	}
 }

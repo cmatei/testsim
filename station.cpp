@@ -47,6 +47,9 @@ station::station(RNG *rng_, Keyer *keyer_, size_t bufsize_, size_t rate_)
 
 	state = station_state::listening;
 
+	// Pre-reserve msgs capacity to avoid reallocation in audio thread
+	msgs.reserve(4);
+
 	sendpos = 0;
 
 	timeout = NEVER;
@@ -65,12 +68,22 @@ void station::set_pitch(float pitch_)
 
 const std::vector<float> &station::get_bfo()
 {
+	// Use incremental phase accumulation to maintain continuity
+	// Keep bfo[] values continuous (unwrapped) within the buffer to avoid clicks
+	float phase = fbfo;
+	const float two_pi = 2.0f * M_PI;
+
 	for (size_t i = 0; i < bufsize; i++) {
-		bfo[i] = fbfo + i * dphi;
+		bfo[i] = phase;
+		phase += dphi;
 	}
 
-	fbfo += bufsize * dphi;
-	fbfo = std::fmod(fbfo, 2.0 * M_PI);
+	// Wrap fbfo for next buffer to avoid precision loss with large values
+	// Use fmod to handle both positive and negative phases correctly
+	fbfo = std::fmod(phase, two_pi);
+	if (fbfo < 0.0f) {
+		fbfo += two_pi;
+	}
 
 	return bfo;
 }

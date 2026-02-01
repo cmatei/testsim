@@ -183,14 +183,6 @@ int main(int argc, char **argv)
 		}
 
 		// Connect cwdaemon callbacks
-		cwdaemon->onDetectMessage = [&contest](const std::string &text) {
-			std::string upper = text;
-			for (auto &c : upper) {
-				c = std::toupper(c);
-			}
-			contest.detectMessage(upper);
-		};
-
 		cwdaemon->onTextToSend = [&contest](const std::string &text) {
 			std::string upper = text;
 			for (auto &c : upper) {
@@ -253,6 +245,9 @@ int main(int argc, char **argv)
 			print_status(&contest, winkeyer.get(), cwdaemon.get());
 			status_counter = 0;
 		}
+
+		// Create any pending stations (deferred from audio callback)
+		contest.createPendingStations();
 
 		// Check for completed QSOs
 		while (contest.hasQso()) {

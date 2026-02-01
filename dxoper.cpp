@@ -79,6 +79,25 @@ MyCallCorrect DxOperator::isMyCall()
 	size_t len_c = c.length();
 	size_t len_c0 = c0.length();
 
+	// Check for partial call (substring match)
+	// If sent call is shorter and appears anywhere in my call, treat as "Almost"
+	if (len_c < len_c0 && len_c >= 2) {
+		// Try to find c as a substring in c0
+		for (size_t start = 0; start <= len_c0 - len_c; start++) {
+			bool matches = true;
+			for (size_t i = 0; i < len_c; i++) {
+				if (c[i] != '?' && c[i] != c0[start + i]) {
+					matches = false;
+					break;
+				}
+			}
+			if (matches) {
+				// Partial call found as substring - return Almost
+				return MyCallCorrect::Almost;
+			}
+		}
+	}
+
 	// Create distance matrix
 	std::vector<std::vector<int>> m(len_c + 1, std::vector<int>(len_c0 + 1, 0));
 

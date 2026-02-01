@@ -17,6 +17,7 @@
 #include <complex>
 #include <memory>
 #include <mutex>
+#include <atomic>
 
 // Forward declaration for RtAudio
 class RtAudio;
@@ -78,7 +79,6 @@ public:
 
 	// Thread-safe wrappers for MyStation (lock audio_mutex before delegating)
 	void sendText(const std::string &msg);
-	void detectMessage(const std::string &msg);
 	void abortSend();
 	bool updateCallInMessage(const std::string &call);
 	bool isSending() const;
@@ -86,6 +86,9 @@ public:
 	// Thread-safe QSO queue access
 	bool hasQso() const;
 	std::tuple<std::string, int, int> popQso();
+
+	// Deferred station creation (to avoid allocation in audio thread)
+	void createPendingStations();
 
 	// Public members (access only through wrappers from main thread)
 	MyStation *me;
@@ -174,6 +177,10 @@ private:
 	std::vector<double> _audio;
 	std::vector<double> _agc_audio;
 	std::vector<station*> _toRemove;
+
+	// Deferred station creation (avoid heap allocation in audio callback)
+	std::atomic<int> _pendingStations{0};
+	std::atomic<bool> _pendingIsSingle{false};
 
 	// RtAudio handle
 	RtAudio *rtaudio;

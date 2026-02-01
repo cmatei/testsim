@@ -37,8 +37,9 @@ void MyStation::abortSend()
 	msgs.push_back(station_message::nomsg);
 	msgtext.clear();
 
-	// Clear pieces
+	// Clear pieces and accumulated text
 	pieces.clear();
+	full_text.clear();
 
 	// Return to listening state
 	this->state = station_state::listening;
@@ -47,41 +48,70 @@ void MyStation::abortSend()
 	processEvent(station_event::msgsent);
 }
 
-void MyStation::detectMessage(const std::string &msg)
+void MyStation::detectAndSetMessages()
 {
-	// Guess message type from full text, so dxstations
+	// Guess message type from full accumulated text, so dxstations
 	// can processEvent in Contest::onMeFinishedSending()
 	msgs.clear();
-	if ((msg.rfind("CQ ", 0) != std::string::npos) ||
-	    (msg.rfind("TEST ", 0) != std::string::npos)) {
-		msgs.push_back(station_message::cq);
-	} else 	if (msg.rfind("5NN ", 0) != std::string::npos) {
-		// if it starts with 5NN it's a nr repeat
-		msgs.push_back(station_message::nr);
-	} else if (msg.find(" 5NN ") != std::string::npos) {
-		// if the 5NN is in the middle, <his> comes first
 
-		hiscall = msg.substr(0, msg.find(" "));
+	const std::string &msg = full_text;
+
+	// CQ detection
+	if (msg.find("CQ ") == 0 || msg.find("TEST ") == 0) {
+		msgs.push_back(station_message::cq);
+		return;
+	}
+
+	// NR at start: "5NN 001"
+	if (msg.find("5NN ") == 0) {
+		msgs.push_back(station_message::nr);
+		return;
+	}
+
+	// Call + NR: "W1AW 5NN 001"
+	size_t nr_pos = msg.find(" 5NN ");
+	if (nr_pos != std::string::npos) {
+		hiscall = msg.substr(0, nr_pos);
 		msgs.push_back(station_message::hiscall);
 		msgs.push_back(station_message::nr);
-	} else 	if (msg == "TU" || (msg.rfind("TU ", 0) != std::string::npos)) {
+		return;
+	}
+
+	// TU variants
+	if (msg == "TU") {
 		msgs.push_back(station_message::tu);
-	} else if (msg.rfind(" TU") != std::string::npos) {
-		hiscall = msg.substr(0, msg.find(" "));
+		return;
+	}
+	if (msg.find("TU ") == 0) {
+		msgs.push_back(station_message::tu);
+		return;
+	}
+	size_t tu_pos = msg.find(" TU");
+	if (tu_pos != std::string::npos) {
+		hiscall = msg.substr(0, tu_pos);
 		msgs.push_back(station_message::hiscall);
 		msgs.push_back(station_message::tu);
-	} else if (msg.rfind("?", 0) != std::string::npos) {
+		return;
+	}
+
+	// Question marks
+	if (msg.find("?") == 0) {
 		msgs.push_back(station_message::qm);
-	} else if (msg.rfind("NR?", 0) != std::string::npos) {
+		return;
+	}
+	if (msg.find("NR?") == 0) {
 		msgs.push_back(station_message::nrqm);
-	} else if (msg.rfind("AGN", 0) != std::string::npos) {
+		return;
+	}
+	if (msg.find("AGN") != std::string::npos) {
 		msgs.push_back(station_message::agn);
-	} else if (msg != "") {
-		// partial call ?!
+		return;
+	}
+
+	// Default: partial call or unknown message
+	if (!msg.empty()) {
 		hiscall = msg;
 		msgs.push_back(station_message::hiscall);
-		printf("pushing partial hiscall %s\n", hiscall.c_str());
-		fflush(stdout);
 	} else {
 		msgs.push_back(station_message::nomsg);
 	}
@@ -91,15 +121,19 @@ void MyStation::sendText(const std::string &msg)
 {
 	size_t pos;
 
-	// Detect message type if not already set by an explicit
-	// detectMessage() call (e.g. cwdaemon with inline speed changes)
-	if (this->state != station_state::sending && msgs.empty()) {
-		detectMessage(msg);
+	bool is_continuation = (this->state == station_state::sending);
+
+	// Accumulate full text while sending
+	if (is_continuation) {
+		// Continuation: append with space separator
+		full_text += " " + msg;
+	} else {
+		// First piece: start fresh accumulation
+		full_text = msg;
 	}
 
-	std::string remaining = msg;
-
 	// Split message on '<his>' placeholders
+	std::string remaining = msg;
 	pos = remaining.find("<his>");
 	while (pos != std::string::npos) {
 		// Add text before '<his>' if any
@@ -120,8 +154,11 @@ void MyStation::sendText(const std::string &msg)
 		pieces.push_back(remaining);
 	}
 
+	// Detect message type from accumulated text (do this in main thread, not audio thread)
+	detectAndSetMessages();
+
 	// If not currently sending, start sending
-	if (this->state != station_state::sending) {
+	if (!is_continuation) {
 		sendNextPiece();
 		if (contest) {
 			contest->onMeStartedSending();

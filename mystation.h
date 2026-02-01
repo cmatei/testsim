@@ -27,16 +27,17 @@ public:
 	const std::vector<float> &get_buffer();
 
 	// MyStation specific methods
-	void detectMessage(const std::string &msg);
 	void sendText(const std::string &msg);
 	void abortSend();
 	bool updateCallInMessage(const std::string &call);
 
 private:
 	void sendNextPiece();
+	void detectAndSetMessages();
 
 	Contest *contest;
 	std::vector<std::string> pieces;  // Message pieces, '@' marks call placeholder
+	std::string full_text;  // Accumulated text during transmission
 };
 
 #endif
