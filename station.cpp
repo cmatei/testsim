@@ -173,7 +173,9 @@ std::string station::nrAsText()
 			replace(s, "0", "O");
 		} else if (rng->random() < 0.97) {
 			replace(s, "0", "T");
-		} else if (rng->random() < 0.97) {
+		}
+
+		if (rng->random() < 0.97) {
 			replace(s, "9", "N");
 		}
 	}

@@ -303,10 +303,12 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 		} else {
 			_rfg0 = 1.0;
 		}
-	} else if (me->state == station_state::sending) {
-		const std::vector<float> &buf = me->get_buffer();
-		for (size_t i = 0; i < _bufsize; i++) {
-			_reim[i] = mvol * buf[i] * std::complex<double>(1, 1);
+	} else {
+		if (me->state == station_state::sending) {
+			const std::vector<float> &buf = me->get_buffer();
+			for (size_t i = 0; i < _bufsize; i++) {
+				_reim[i] = mvol * buf[i] * std::complex<double>(1, 1);
+			}
 		}
 	}
 
@@ -399,11 +401,14 @@ void Contest::onMeFinishedSending()
 				should_create = true;
 				break;
 			}
+
+#if 0
 			if (msg == station_message::tu &&
 			    std::find(me->msgs.begin(), me->msgs.end(), station_message::mycall) != me->msgs.end()) {
 				should_create = true;
 				break;
 			}
+#endif
 		}
 
 		if (should_create) {

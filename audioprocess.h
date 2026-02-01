@@ -19,7 +19,7 @@ private:
 class Modulator {
 public:
         Modulator(size_t bufsize, size_t samplerate, double pitch, bool reverse = false):
-	        bufsize(bufsize), samplerate(samplerate), reverse(reverse) { setPitch(pitch); }
+	        bufsize(bufsize), samplerate(samplerate), reverse(reverse), phase(0.0) { setPitch(pitch); }
 
 	void setPitch(double pitch);
 	void setReverse(bool rev) { reverse = rev; setPitch(pitch); }
@@ -27,11 +27,11 @@ public:
 	void modulate(const std::complex<double> *in, double *out);
 
 private:
-	size_t bufsize, samplerate, shift;
+	size_t bufsize, samplerate;
 	double pitch;
 	bool reverse;
-
-	std::vector<std::complex<double>> ex;
+	double phase;  // Continuous phase tracker
+	double dphi;   // Exact phase increment per sample
 };
 
 class Agc {

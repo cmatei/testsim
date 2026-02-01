@@ -41,40 +41,30 @@ void MovAvg::avg(const std::complex<double> *in, std::complex<double> *out)
 
 void Modulator::setPitch(double pitch)
 {
-	size_t period, n, i;
-	double dphi;
-	std::complex<double> sign;
-
 	this->pitch = pitch;
-
-	period = (size_t) std::lrint(samplerate / pitch);
-	shift = (size_t) std::lrint(bufsize % period);
-
-	dphi = 2.0 * M_PI / period;
-
-	n = bufsize - shift + period;
-
-	ex.clear();
-	ex.resize(n);
-
-	if (reverse)
-		sign = std::complex(0.0, 1.0);
-	else
-		sign = std::complex(0.0, -1.0);
-
-	for (i = 0; i < n; i++) {
-		ex[i] = -std::exp(sign * dphi * (1.0 * i));
-	}
+	// Compute exact phase increment (no quantization!)
+	dphi = 2.0 * M_PI * pitch / samplerate;
 }
 
 
 void Modulator::modulate(const std::complex<double> *in, double *out)
 {
+	// Compute complex exponential on-the-fly with exact phase
+	double sign = reverse ? 1.0 : -1.0;
+	double p = phase;
+
 	for (size_t i = 0; i < bufsize; i++) {
-		out[i] = std::imag(ex[i] * in[i]);
+		// Direct phase calculation: exp(-j*p) = cos(p) - j*sin(p)
+		std::complex<double> ex(std::cos(p), sign * std::sin(p));
+		out[i] = std::imag(ex * in[i]);
+		p += dphi;
 	}
 
-	std::rotate(std::begin(ex), std::begin(ex) + shift, std::end(ex));
+	// Wrap phase to prevent precision loss (same as station::get_bfo)
+	phase = std::fmod(p, 2.0 * M_PI);
+	if (phase < 0.0) {
+		phase += 2.0 * M_PI;
+	}
 }
 
 Agc::Agc(size_t bufsize, double maxout, double maxoutnorm, double noiseindb, double noiseoutdb, size_t attacksamples, size_t holdsamples):
@@ -163,6 +153,7 @@ void Agc::process(const double *in, double *out)
 	for (size_t i = 0; i < bufsize; i++) {
 		double g = std::max(gain[i], 1.0e-8);
 		g = maxoutnorm * (1.0 - std::exp(-g / beta)) / g;
+		//out[i] = g * valbuf[agcmid + i];  // Fixed: apply gain to current sample, not old data
 		out[i] = g * valbuf[i];
 	}
 }
