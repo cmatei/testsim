@@ -85,7 +85,7 @@ public:
 
 	// Thread-safe QSO queue access
 	bool hasQso() const;
-	std::tuple<std::string, int, int> popQso();
+	std::tuple<std::string, int, int, int> popQso();
 
 	// Deferred station creation (to avoid allocation in audio thread)
 	void createPendingStations();
@@ -93,7 +93,7 @@ public:
 	// Public members (access only through wrappers from main thread)
 	MyStation *me;
 	std::vector<station*> stations;
-	std::queue<std::tuple<std::string, int, int>> qsoQueue;
+	std::queue<std::tuple<std::string, int, int, int>> qsoQueue;
 
 	// Configuration parameters
 	int wpm;
@@ -117,6 +117,7 @@ public:
 	float rptProb;
 	float tqrm;
 	int duration;
+	int norepeats;
 	RunMode mode;
 	bool cwreverse;
 	bool savewave;

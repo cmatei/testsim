@@ -5,7 +5,7 @@
 DxStation::DxStation(RNG *rng, Keyer *keyer, CallList *callList, station *cqstn_,
                      int minutes, bool lids, double lidNrProb, double lidRstProb,
                      bool qsb, double flutterProb, double rptProb, double fast,
-                     double slow, bool isSingle, size_t bufsize, size_t rate)
+                     double slow, bool isSingle, int norepeats, size_t bufsize, size_t rate)
 	: station(rng, keyer, bufsize, rate), cqstn(cqstn_), qsb_effect(nullptr),
 	  called(false)
 {
@@ -17,7 +17,7 @@ DxStation::DxStation(RNG *rng, Keyer *keyer, CallList *callList, station *cqstn_
 	oper = new DxOperator(rng, minutes, cqstn, this->mycall,
 	                      rng->integers(1, 4),  // skills 1-3
 	                      static_cast<double>(rate) / bufsize,  // s2bfac
-	                      lids, rptProb, cqstn->wpm, fast, slow, isSingle,
+	                      lids, rptProb, cqstn->wpm, fast, slow, isSingle, norepeats,
 	                      OperatorState::NeedPrevEnd);
 
 	// Set up exchange number (possibly with error for lids)
@@ -166,5 +166,5 @@ const std::vector<float> &DxStation::get_buffer()
 DxStation::QsoData DxStation::dataToLastQso()
 {
 	this->state = station_state::deleteme;
-	return {this->mycall, rst_to_send, this->nr};
+	return {this->mycall, rst_to_send, this->nr, static_cast<int> (std::round(this->wpm))};
 }

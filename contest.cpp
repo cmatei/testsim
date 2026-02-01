@@ -55,6 +55,7 @@ Contest::Contest(RNG *rng, const std::string &inifile)
 		rptProb = 0.1;
 		_tqrm = 240;
 		duration = 60;
+		norepeats = 0;
 		mode = RunMode::pileup;
 		_cwreverse = false;
 		savewave = false;
@@ -247,7 +248,7 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 			if (qsy && dynamic_cast<DxStation*>(s) != nullptr) {
 				DxStation *dx = static_cast<DxStation*>(s);
 				if (dx->oper->state != OperatorState::Done && dx->called) {
-					qsoQueue.emplace(dx->mycall, 0, 0);
+					qsoQueue.emplace(dx->mycall, 0, 0, 0);
 					// GUI notification would go here
 				}
 			}
@@ -338,7 +339,7 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 		DxStation *dx = dynamic_cast<DxStation*>(s);
 		if (dx != nullptr && dx->oper->state == OperatorState::Done) {
 			auto qsoData = dx->dataToLastQso();
-			qsoQueue.emplace(qsoData.call, qsoData.rst, qsoData.nr);
+			qsoQueue.emplace(qsoData.call, qsoData.rst, qsoData.nr, qsoData.wpm);
 			// GUI notification would go here
 		}
 	}
@@ -561,6 +562,7 @@ void Contest::readConfig(const std::string &filename)
 			else if (key == "lidnrprob") lidNrProb = std::stof(value);
 			else if (key == "rptprob") rptProb = std::stof(value);
 			else if (key == "tqrm") _tqrm = std::stof(value);
+			else if (key == "norepeats") norepeats = std::stoi(value);
 		} else if (section == "Contest") {
 			if (key == "duration") duration = std::stoi(value);
 			else if (key == "mode") {
@@ -619,7 +621,8 @@ void Contest::writeConfig(const std::string &filename)
 	file << "lidrstprob=" << lidRstProb << "\n";
 	file << "lidnrprob=" << lidNrProb << "\n";
 	file << "rptprob=" << rptProb << "\n";
-	file << "flutterprob=" << flutterProb << "\n\n";
+	file << "flutterprob=" << flutterProb << "\n";
+	file << "norepeats=" << norepeats << "\n\n";
 
 	file << "[Contest]\n";
 	file << "duration=" << duration << "\n";
@@ -671,7 +674,7 @@ bool Contest::hasQso() const
 	return !qsoQueue.empty();
 }
 
-std::tuple<std::string, int, int> Contest::popQso()
+std::tuple<std::string, int, int, int> Contest::popQso()
 {
 	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
 	auto qso = qsoQueue.front();
@@ -698,7 +701,7 @@ void Contest::createPendingStations()
 		DxStation *s = new DxStation(_rng, _keyer, _callList, me,
 			bufcount * _bufsize / (60.0 * _rate),
 			lids, lidNrProb, lidRstProb, qsb, flutterProb,
-			rptProb, fast, slow, is_single, _bufsize, _rate);
+			rptProb, fast, slow, is_single, norepeats, _bufsize, _rate);
 		stations.push_back(s);
 
 		// Trigger newly created stations to start calling
