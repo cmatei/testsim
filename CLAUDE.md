@@ -133,6 +133,7 @@ gcc -o gentables gentables.c -lm
 
 **DxStation System** (`dxstation.h`, `dxstation.cpp`, `dxoper.h`, `dxoper.cpp`)
 - `DxStation`: Simulated contest station with QSB, variable pitch, amplitude, WPM
+  - Amplitude: uniform distribution from 3000 (very weak) to 50000 (very strong) for realistic signal variation
 - `DxOperator`: AI state machine with 8 states (NeedPrevEnd, NeedQso, NeedNr, etc.)
 - Edit distance algorithm for call sign matching with "lid" behavior
 - Partial call recognition: matches any substring (prefix, middle, or suffix) of the full call
@@ -141,7 +142,9 @@ gcc -o gentables gentables.c -lm
 - `norepeats` mode: when enabled, stations send compact exchanges without repetition
 - `longnr` mode: serial number generation
   - When disabled (0): time-based serials that grow during contest (1 + random × minutes × skill)
-  - When enabled (1): random 4-digit serials (1-9999) for better copy training
+  - When enabled (1): random serials for better copy training with realistic distribution:
+    - 70% are 3-digit numbers (100-999)
+    - 30% are 4-digit numbers (1000-9999)
 
 **Interference Simulation**
 - `QrnStation` (`qrnstation.h`, `qrnstation.cpp`): Atmospheric noise (sparse bursts)
@@ -330,12 +333,14 @@ The `station::get_buffer()` method provides audio data in chunks, managing the s
   - Partial call matching: changed from prefix-only to substring matching (any position in call)
   - Stations go quiet (NeedPrevEnd) when user works someone else, preventing interference
   - **mestarted event fix**: Stations in NeedPrevEnd or NeedQso states automatically back off when hearing MyStation transmit (assume busy with another QSO); stations already engaged (NeedNr/NeedCall/NeedCallNr/NeedEnd) continue listening to complete their QSO - prevents interference while allowing QSO completion
+  - **mefinished state management fix**: Stations in NeedPrevEnd state now stay in listening state instead of moving to preparingtosend - prevents calling when they should be waiting quietly for ongoing QSO to finish
   - **Patience reset on call heard**: When station hears their call (full or partial match), patience resets to FULL_PATIENCE (8) - simulates operator confidence and persistence when being called
   - **AGN/NR? message handling**: Added handling for AGN and NR? messages - stations now repeat their exchange (by setting repeatCnt=2) and reset patience to maximum when receiving repeat requests
   - TU message properly wakes up waiting stations
   - Partial call replies never include NR (just send call again), regardless of norepeats mode
   - Patience initialization: minimum 4-8 attempts (was 0-∞) prevents premature station removal
   - Station creation: added `mefinished` event to new stations so they start calling immediately
+- **DxStation amplitude variability**: Changed from concentrated mid-range (9000-45000 with sinusoidal distribution) to wide uniform distribution (3000-50000) for more realistic signal strength variation and better training exposure to weak and strong signals
 - **Performance optimizations**: Deferred station creation to avoid heap allocation in audio callback
   - Atomic flags `_pendingStations` and `_pendingIsSingle` signal main thread
   - `createPendingStations()` called from main loop, not audio callback

@@ -110,7 +110,7 @@ Run with config:
 - **QSB on** makes copying more challenging
 - **Single mode** for one-at-a-time QSO practice
 - **Adjust bandwidth** to change selectivity (100-600 Hz)
-- **Enable longnr=1** to practice copying 4-digit serial numbers (1-9999)
+- **Enable longnr=1** to practice copying variable-length serial numbers (70% 3-digit, 30% 4-digit)
 - **Enable savewave=1** to record practice sessions to WAV files for later review
 - **QSO logs** are automatically saved to CSV files (contest_YYYYMMDD_HHMMSS.log) containing UTC time, callsign, and serial number for each completed contact
 

@@ -15,8 +15,6 @@ Contest Simulator has **minimal dependencies**:
 - C++17 compiler (g++ or clang++)
 - RtAudio development headers
 
-**No Qt, no Marble, no GUI libraries, no serial port libraries - pure CLI network application.**
-
 ## Building
 
 ### Standard Build
@@ -36,14 +34,13 @@ Check what libraries the daemon links against:
 ldd testsim
 ```
 
-Expected output (no Qt libraries):
+Expected output:
 ```
 librtaudio.so.7 => /usr/lib/librtaudio.so.7
 libstdc++.so.6 => /usr/lib/libstdc++.so.6
 libm.so.6 => /usr/lib/libm.so.6
 libc.so.6 => /usr/lib/libc.so.6
 ... (audio backends: libjack, libpulse, libasound)
-... (no libQt*.so present)
 ```
 
 ## Distribution-Specific Packaging
@@ -137,8 +134,5 @@ Runtime memory:
 
 ## Performance Notes
 
-- Buffer size (default 512 samples) affects latency
-- Sample rate (default 11025 Hz) is optimal for CW
-- Activity level linearly affects CPU/memory (more DxStations)
 - QSB/QRN/QRM add minimal overhead (~1-2% CPU each)
 

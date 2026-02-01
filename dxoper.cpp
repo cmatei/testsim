@@ -31,8 +31,15 @@ int DxOperator::getWpm()
 int DxOperator::getNr()
 {
 	if (longnr) {
-		// Generate random 4-digit numbers for training (1-9999)
-		return 1 + rng->integers(0, 9999);
+		// Generate random serial numbers for training
+		// 70% 3-digit (100-999), 30% 4-digit (1000-9999)
+		if (rng->uniform() < 0.7) {
+			// 3-digit number
+			return 100 + rng->integers(0, 900);
+		} else {
+			// 4-digit number
+			return 1000 + rng->integers(0, 9000);
+		}
 	} else {
 		// Time-based serials that grow over contest duration
 		return static_cast<int>(std::round(1 + rng->uniform() * minutes * skills));

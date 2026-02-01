@@ -47,8 +47,10 @@ DxStation::DxStation(RNG *rng, Keyer *keyer, CallList *callList, station *cqstn_
 		}
 	}
 
-	// Set amplitude with random variation
-	this->amplitude = 9000.0 + 18000.0 * (1.0 + std::sin(M_PI * (rng->uniform() - 0.5)));
+	// Set amplitude with wide random variation
+	// Range: 3000 (very weak) to 50000 (very strong)
+	// Uniform distribution for equal exposure to all signal levels
+	this->amplitude = 3000.0 + 47000.0 * rng->uniform();
 
 	// Set pitch offset from center (0 = on frequency, heard at modulator pitch)
 	double pitch_offset = std::clamp(rng->normal(0.0, 100.0), -300.0, 300.0);
@@ -137,7 +139,14 @@ void DxStation::processEvent(station_event evt)
 
 			// Set delay before sending
 			this->timeout = oper->getSendDelay();
-			this->state = station_state::preparingtosend;
+
+			// Only prepare to send if operator is ready
+			// If in NeedPrevEnd, stay in listening state
+			if (oper->state == OperatorState::NeedPrevEnd) {
+				this->state = station_state::listening;
+			} else {
+				this->state = station_state::preparingtosend;
+			}
 		}
 		break;
 
