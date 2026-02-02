@@ -62,6 +62,12 @@ lidnrprob=0.1
 # Probability of repeated exchanges (0.0-1.0)
 rptprob=0.1
 
+# Long serial numbers - 1=random (70% 3-digit, 30% 4-digit), 0=time-based growing serials
+#longnr=1
+#
+# Short messages only
+#norepeats=1
+
 [Contest]
 # Contest duration in minutes (or QSO count in _qsonr modes)
 duration=60
