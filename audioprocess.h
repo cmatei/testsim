@@ -13,13 +13,14 @@ public:
 
 private:
 	size_t bufsize, navg;
-	std::vector<std::complex<double>> prev;
+	std::vector<std::complex<double>> sums[2];  // Two cumsum buffers
+	int inew;  // Toggle between 0 and 1
 };
 
 class Modulator {
 public:
         Modulator(size_t bufsize, size_t samplerate, double pitch, bool reverse = false):
-	        bufsize(bufsize), samplerate(samplerate), reverse(reverse), phase(0.0) { setPitch(pitch); }
+	        bufsize(bufsize), samplerate(samplerate), reverse(reverse) { setPitch(pitch); }
 
 	void setPitch(double pitch);
 	void setReverse(bool rev) { reverse = rev; setPitch(pitch); }
@@ -30,8 +31,8 @@ private:
 	size_t bufsize, samplerate;
 	double pitch;
 	bool reverse;
-	double phase;  // Continuous phase tracker
-	double dphi;   // Exact phase increment per sample
+	std::vector<std::complex<double>> ex;  // Pre-computed complex exponential
+	size_t shift;  // Roll amount per buffer
 };
 
 class Agc {
@@ -41,11 +42,11 @@ public:
 	void process(const double *in, double *out);
 private:
 
-	size_t bufsize, agcmid, magbufsize, valbufsize;
+	size_t bufsize, agcmid, magbufsize, valbufsize, agcbufsize;
 	double maxoutnorm;
 	double noisein, noiseout, beta;
 
-	std::vector<double> agcshape, magbuf, valbuf, gain;
+	double *agcshape, *magbuf, *valbuf, *gain;
 
 	std::vector<std::vector<unsigned long>> ind;
 };
