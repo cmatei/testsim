@@ -4,7 +4,7 @@
 #include <cassert>
 
 // QSB implementation
-QSB::QSB(RNG *rng_, float bandwidth_, size_t bufsize_, size_t rate_)
+QSB::QSB(RNG *rng_, double bandwidth_, size_t bufsize_, size_t rate_)
 	: rng(rng_), bandwidth(0.0), bufsize(bufsize_), rate(rate_),
 	  av1(nullptr), av2(nullptr), av3(nullptr),
 	  gain_bufptr(0), gain0(1.0)
@@ -20,7 +20,7 @@ QSB::~QSB()
 	delete av3;
 }
 
-void QSB::setBandwidth(float bw)
+void QSB::setBandwidth(double bw)
 {
 	bandwidth = bw;
 
@@ -88,7 +88,7 @@ void QSB::newBuf()
 	gain_bufptr = 0;
 }
 
-void QSB::applyTo(std::vector<float> &buf)
+void QSB::applyTo(std::vector<double> &buf)
 {
 	// Apply gain with linear interpolation across 4 segments
 	for (size_t i = 0; i < 4; i++) {

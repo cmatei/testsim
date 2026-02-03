@@ -8,20 +8,20 @@
 
 class Keyer {
 public:
-	Keyer(size_t samplerate_ = 11025, size_t bufsize_ = 512, float risetime_ = 0.005);
+	Keyer(size_t samplerate_ = 11025, size_t bufsize_ = 512, double risetime_ = 0.005);
 
-	void setRisetime(float risetime);
+	void setRisetime(double risetime);
 	std::string Encode(std::string txt);
 
-	std::vector<float> getEnvelope(const std::string& msg, float wpm);
+	std::vector<double> getEnvelope(const std::string& msg, double wpm);
 
 private:
 	static std::map<char, std::string> morse;
 
 	size_t samplerate, bufsize;
-	float risetime;
+	double risetime;
 
-	std::vector<float> risevec;
+	std::vector<double> risevec;
 };
 
 

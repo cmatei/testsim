@@ -47,13 +47,11 @@ DxStation::DxStation(RNG *rng, Keyer *keyer, CallList *callList, station *cqstn_
 		}
 	}
 
-	// Set amplitude with wide random variation
-	// Range: 3000 (very weak) to 50000 (very strong)
-	// Uniform distribution for equal exposure to all signal levels
-	this->amplitude = 3000.0 + 47000.0 * rng->uniform();
+	// Original amplitude range matching Python cwsim
+	this->amplitude = 9000.0 + 18000.0 * (1.0 + std::sin(M_PI * rng->random() - 0.5));
 
 	// Set pitch offset from center (0 = on frequency, heard at modulator pitch)
-	double pitch_offset = std::clamp(rng->normal(0.0, 100.0), -300.0, 300.0);
+	double pitch_offset = std::fmod(rng->normal(0.0, 150.0), 300);
 	this->set_pitch(pitch_offset);
 
 	// Start in Copying state (listening to CQ station)
@@ -167,14 +165,14 @@ void DxStation::processEvent(station_event evt)
 	}
 }
 
-const std::vector<float> &DxStation::get_buffer()
+const std::vector<double> &DxStation::get_buffer()
 {
 	// Get base buffer from station class
-	const std::vector<float> &buf = station::get_buffer();
+	const std::vector<double> &buf = station::get_buffer();
 
 	// Apply QSB fading if enabled
 	if (qsb_effect) {
-		qsb_effect->applyTo(const_cast<std::vector<float>&>(buf));
+		qsb_effect->applyTo(const_cast<std::vector<double>&>(buf));
 	}
 
 	return buf;

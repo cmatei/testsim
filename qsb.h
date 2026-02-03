@@ -9,17 +9,17 @@
 
 class QSB {
 public:
-	QSB(RNG *rng_, float bandwidth_ = 0.1, size_t bufsize_ = 512, size_t rate_ = 11025);
+	QSB(RNG *rng_, double bandwidth_ = 0.1, size_t bufsize_ = 512, size_t rate_ = 11025);
 	~QSB();
 
-	void setBandwidth(float bw);
-	void applyTo(std::vector<float> &buf);
+	void setBandwidth(double bw);
+	void applyTo(std::vector<double> &buf);
 
 private:
 	void newBuf();
 
 	RNG *rng;
-	float bandwidth;
+	double bandwidth;
 	size_t bufsize, rate;
 	size_t buf4;  // bufsize / 4
 

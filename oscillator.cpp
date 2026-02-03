@@ -3,7 +3,7 @@
 #include "oscillator.h"
 
 
-constexpr float pi = 3.14159265358979323846;
+constexpr double pi = 3.14159265358979323846;
 
 #include "wavetables.cpp"
 
@@ -15,7 +15,7 @@ Oscillator::Oscillator()
 	wave = wavetable_sinusoidal;
 }
 
-void Oscillator::setFrequency(float frequency, float sampleRate)
+void Oscillator::setFrequency(double frequency, double sampleRate)
 {
 	auto oversample = wavetable_size / sampleRate;
 	tableDelta = frequency * oversample;
@@ -44,18 +44,18 @@ void Oscillator::setWaveform(int wform)
 
 }
 
-float Oscillator::nextSample()
+double Oscillator::nextSample()
 {
 	unsigned int i0 = (unsigned int) tableIndex;
 	unsigned int i1 = (i0 == wavetable_size - 1) ? 0 : i0 + 1;
-	float frac = tableIndex - (float) i0;
-	float res;
+	double frac = tableIndex - (double) i0;
+	double res;
 
 	res = wave[i0] + frac * (wave[i1] - wave[i0]);
 	tableIndex += tableDelta;
 
 	if (tableIndex > wavetable_size)
-		tableIndex -= (float) wavetable_size;
+		tableIndex -= (double) wavetable_size;
 
 	return res;
 }
@@ -65,7 +65,7 @@ float Oscillator::nextSample()
 
 
 
-void AudioContent::addOscillator(float frequency, int wform)
+void AudioContent::addOscillator(double frequency, int wform)
 {
 	Oscillator *osc = new Oscillator();
 
@@ -75,13 +75,13 @@ void AudioContent::addOscillator(float frequency, int wform)
 	l.push_back(osc);
 }
 
-float AudioContent::nextSample()
+double AudioContent::nextSample()
 {
-	float r = 0.0;
+	double r = 0.0;
 
 	for (auto i : l) {
 		r += i->nextSample();
 	}
 
-	return r / (float) l.size();
+	return r / (double) l.size();
 }

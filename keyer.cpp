@@ -69,7 +69,7 @@ std::map<char, std::string> Keyer::morse = {
 };
 
 
-Keyer::Keyer(size_t samplerate_, size_t bufsize_, float risetime)
+Keyer::Keyer(size_t samplerate_, size_t bufsize_, double risetime)
 {
 	samplerate = samplerate_;
 	bufsize = bufsize_;
@@ -77,17 +77,17 @@ Keyer::Keyer(size_t samplerate_, size_t bufsize_, float risetime)
 	setRisetime(risetime);
 }
 
-void Keyer::setRisetime(float risetime_)
+void Keyer::setRisetime(double risetime_)
 {
 	risetime = risetime_;
 
-	float step = 1.0 / (2.7 * risetime * samplerate);
+	double step = 1.0 / (2.7 * risetime * samplerate);
 
 	risevec.clear();
-	int steps = static_cast<int>(std::round(1.0f / step));
+	int steps = static_cast<int>(std::round(1.0 / step));
 	for (int j = 0; j <= steps; j++) {
-		float i = j * step;
-		risevec.push_back(0.5f * (1.0f + std::erf(5.0f * (i - 0.5f))));
+		double i = j * step;
+		risevec.push_back(0.5 * (1.0 + std::erf(5.0 * (i - 0.5))));
 	}
 }
 
@@ -110,9 +110,9 @@ std::string Keyer::Encode(std::string txt)
 	return s;
 }
 
-std::vector<float> Keyer::getEnvelope(const std::string& msg, float wpm)
+std::vector<double> Keyer::getEnvelope(const std::string& msg, double wpm)
 {
-	std::vector<float> env;
+	std::vector<double> env;
 
 	size_t ndits = 0;
 	size_t nspac = 0;
@@ -145,11 +145,11 @@ std::vector<float> Keyer::getEnvelope(const std::string& msg, float wpm)
 	env.resize(n);
 	std::fill(env.begin(), env.end(), 0.0);
 
-	std::vector<float> dit(nr + samples, 1.0);
+	std::vector<double> dit(nr + samples, 1.0);
 	std::copy(risevec.begin(), risevec.end(), dit.begin());
 	std::copy(risevec.begin(), risevec.end(), dit.rbegin());
 
-	std::vector<float> dah(nr + 3 * samples, 1.0);
+	std::vector<double> dah(nr + 3 * samples, 1.0);
 	std::copy(risevec.begin(), risevec.end(), dah.begin());
 	std::copy(risevec.begin(), risevec.end(), dah.rbegin());
 

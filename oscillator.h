@@ -12,10 +12,10 @@ public:
 	Oscillator();
 
 public:
-	void setFrequency(float frequency, float sampleRate);
+	void setFrequency(double frequency, double sampleRate);
 	void setWaveform(int wform);
 
-	float nextSample();
+	double nextSample();
 
 	static const int WAVE_SINUSOIDAL = 1;
 	static const int WAVE_TRIANGULAR = 2;
@@ -23,24 +23,24 @@ public:
 	static const int WAVE_SQUARE = 4;
 
 private:
-	float tableIndex;
-	float tableDelta;
+	double tableIndex;
+	double tableDelta;
 
-	float *wave;
+	double *wave;
 };
 
 class AudioContent {
 public:
-	AudioContent(float sampleRate = 48000.0) {
+	AudioContent(double sampleRate = 48000.0) {
 		this->sampleRate = sampleRate;
 	}
 
-	float nextSample();
+	double nextSample();
 
-	void addOscillator(float frequency, int wform = Oscillator::WAVE_SINUSOIDAL);
+	void addOscillator(double frequency, int wform = Oscillator::WAVE_SINUSOIDAL);
 
 private:
-	float sampleRate;
+	double sampleRate;
 	std::list<Oscillator *> l;
 };
 

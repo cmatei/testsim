@@ -58,20 +58,21 @@ station::station(RNG *rng_, Keyer *keyer_, size_t bufsize_, size_t rate_)
 	bfo.resize(bufsize, 0.0);
 }
 
-void station::set_pitch(float pitch_)
+void station::set_pitch(double pitch_)
 {
 	pitch = pitch_;
-	dphi = 2.0 * M_PI * pitch / rate;
+	dphi = 2.0 * M_PI * pitch / static_cast<double>(rate);
 	fbfo = 0.0;
 }
 
 
-const std::vector<float> &station::get_bfo()
+const std::vector<double> &station::get_bfo()
 {
 	// Use incremental phase accumulation to maintain continuity
 	// Keep bfo[] values continuous (unwrapped) within the buffer to avoid clicks
-	float phase = fbfo;
-	const float two_pi = 2.0f * M_PI;
+	// Use double precision throughout to match Python
+	double phase = fbfo;
+	const double two_pi = 2.0 * M_PI;
 
 	for (size_t i = 0; i < bufsize; i++) {
 		bfo[i] = phase;
@@ -79,9 +80,8 @@ const std::vector<float> &station::get_bfo()
 	}
 
 	// Wrap fbfo for next buffer to avoid precision loss with large values
-	// Use fmod to handle both positive and negative phases correctly
 	fbfo = std::fmod(phase, two_pi);
-	if (fbfo < 0.0f) {
+	if (fbfo < 0.0) {
 		fbfo += two_pi;
 	}
 
@@ -89,7 +89,7 @@ const std::vector<float> &station::get_bfo()
 }
 
 
-const std::vector<float> &station::get_buffer()
+const std::vector<double> &station::get_buffer()
 {
 	std::fill(buffer.begin(), buffer.end(), 0.0);
 
@@ -203,7 +203,7 @@ void station::sendText(const std::string &text)
 	envelope = keyer->getEnvelope(s, wpm);
 
 	std::transform(envelope.begin(), envelope.end(), envelope.begin(),
-		       [this](float e) { return e * this->amplitude; });
+		       [this](double e) { return e * this->amplitude; });
 
 	state = station_state::sending;
 	timeout = NEVER;

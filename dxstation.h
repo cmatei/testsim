@@ -19,7 +19,7 @@ public:
 
 	// Override base class methods
 	void processEvent(station_event evt) override;
-	const std::vector<float> &get_buffer();
+	const std::vector<double> &get_buffer();
 
 	// DxStation specific methods
 	struct QsoData {

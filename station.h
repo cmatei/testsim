@@ -56,11 +56,11 @@ class station {
 public:
 	station(RNG *rng, Keyer *keyer_, size_t bufsize_ = 512, size_t rate_ = 11025);
 
-	void set_pitch(float pitch_);
-	float get_pitch() const { return pitch; }
+	void set_pitch(double pitch_);
+	double get_pitch() const { return pitch; }
 
-	const std::vector<float> &get_bfo();
-	const std::vector<float> &get_buffer();
+	const std::vector<double> &get_bfo();
+	const std::vector<double> &get_buffer();
 
 	void sendText(const std::string &text);
 	void sendMsg(station_message msg);
@@ -74,19 +74,21 @@ public:
 	std::string hiscall, mycall;
 	station_state state;
 	std::vector<station_message> msgs;
-	float wpm, amplitude;
+	double wpm, amplitude;
 	int rst, nr;
 	int timeout;
 
 protected:
 	size_t bufsize, rate, sendpos;
-	float pitch, dphi, fbfo;
+	double pitch, dphi, fbfo;  // Use double precision like Python
 	bool nr_err, standard_abbrevs;
 
 	RNG *rng;
 	Keyer *keyer;
 
-	std::vector<float> envelope, bfo, buffer;
+	std::vector<double> envelope;
+	std::vector<double> bfo;  // Use double precision like Python
+	std::vector<double> buffer;
 
 	std::string msgtext;
 };

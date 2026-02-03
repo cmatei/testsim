@@ -129,10 +129,10 @@ Contest::~Contest()
 	delete rtaudio;
 }
 
-void Contest::setTqrm(float tqrm)
+void Contest::setTqrm(double tqrm)
 {
 	_tqrm = tqrm;
-	qrmProbPerBuffer = static_cast<float>(_bufsize) / _rate / _tqrm;
+	qrmProbPerBuffer = static_cast<double>(_bufsize) / _rate / _tqrm;
 }
 
 void Contest::setBandwidth(int bandwidth)
@@ -152,7 +152,7 @@ void Contest::setBandwidth(int bandwidth)
 	_m3 = new MovAvg(_bufsize, navg);
 }
 
-void Contest::setPitch(float pitch)
+void Contest::setPitch(double pitch)
 {
 	_pitch = pitch;
 	if (modulator != nullptr) {
@@ -197,7 +197,7 @@ double Contest::rfgfun(double a0, double a1)
 	return a1 + _qskdecayfactor * (a0 - a1);
 }
 
-void Contest::getAudio(float *outdata, unsigned int nframes)
+void Contest::getAudio(double *outdata, unsigned int nframes)
 {
 	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
 
@@ -258,11 +258,11 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 			}
 			_toRemove.push_back(s);
 		} else if (s->state == station_state::sending) {
-			const std::vector<float> &buf = s->get_buffer();
-			const std::vector<float> &bfo = s->get_bfo();
+			const std::vector<double> &buf = s->get_buffer();
+			const std::vector<double> &bfo = s->get_bfo();
 
 			for (size_t i = 0; i < _bufsize && i < buf.size() && i < bfo.size(); i++) {
-				double phase = static_cast<double>(bfo[i]) - _bufindex[i] * ritfac - _ritph;
+				double phase = bfo[i] - _bufindex[i] * ritfac - _ritph;
 				// Optimize: exp(i*(-phase)) = cos(-phase) + i*sin(-phase) = cos(phase) - i*sin(phase)
 				double amplitude = static_cast<double>(buf[i]);
 				double c = std::cos(phase);
@@ -286,7 +286,7 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 	double mvol = monitor * 20000.0;
 	if (qsk) {
 		if (me->state == station_state::sending) {
-			const std::vector<float> &buf = me->get_buffer();
+			const std::vector<double> &buf = me->get_buffer();
 			_rfg[0] = _rfg0;
 			for (size_t i = 0; i < _bufsize; i++) {
 				_rfg[i + 1] = rfgfun(1.0 - buf[i], _rfg[i]);
@@ -305,7 +305,7 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 		}
 	} else {
 		if (me->state == station_state::sending) {
-			const std::vector<float> &buf = me->get_buffer();
+			const std::vector<double> &buf = me->get_buffer();
 			for (size_t i = 0; i < _bufsize; i++) {
 				_reim[i] = mvol * buf[i] * std::complex<double>(1, 1);
 			}
@@ -323,21 +323,74 @@ void Contest::getAudio(float *outdata, unsigned int nframes)
 		_filtered[i] *= _fgain;
 	}
 
+	// Diagnostic: Check signal levels after filtering
+	static int diag_counter = 0;
+	static double max_filtered_ever = 0.0;
+	static double max_audio_ever = 0.0;
+	static double max_agc_ever = 0.0;
+
+	double max_filtered = 0.0;
+	for (size_t i = 0; i < _bufsize; i++) {
+		max_filtered = std::max(max_filtered, std::abs(_filtered[i]));
+	}
+	max_filtered_ever = std::max(max_filtered_ever, max_filtered);
+
 	// Modulate to audio frequency
 	modulator->modulate(_filtered.data(), _audio.data());
 
+	// Diagnostic: Check signal levels before AGC
+	double max_audio = 0.0;
+	for (size_t i = 0; i < _bufsize; i++) {
+		max_audio = std::max(max_audio, std::abs(_audio[i]));
+	}
+	max_audio_ever = std::max(max_audio_ever, max_audio);
+
 	// Apply AGC
 	_m5->process(_audio.data(), _agc_audio.data());
+
+	// Diagnostic: Check signal levels after AGC
+	double max_agc = 0.0;
+	int clipped_samples = 0;
+	for (size_t i = 0; i < _bufsize; i++) {
+		double abs_val = std::abs(_agc_audio[i]);
+		max_agc = std::max(max_agc, abs_val);
+		if (abs_val > 1.0) clipped_samples++;
+	}
+	max_agc_ever = std::max(max_agc_ever, max_agc);
+
+	// Log every 100 buffers when there are multiple stations
+	diag_counter++;
+	if (diag_counter % 100 == 0) {
+		int num_stations = dxCount();
+		std::cerr << "Buf " << bufcount
+		          << " Stn=" << num_stations
+		          << " Filt=" << max_filtered
+		          << " Audio=" << max_audio
+		          << " AGC=" << max_agc;
+		if (clipped_samples > 0) {
+			std::cerr << " CLIP=" << clipped_samples;
+		}
+		std::cerr << " [MaxEver: F=" << max_filtered_ever
+		          << " A=" << max_audio_ever
+		          << " G=" << max_agc_ever << "]" << std::endl;
+	}
+
+	// Warn about extreme values
+	if (max_agc > 1.5) {
+		std::cerr << "*** WARNING: AGC output exceeds 1.5: " << max_agc
+		          << " (stations=" << dxCount() << ")" << std::endl;
+	}
 
 	// Record to WAV file if enabled
 	if (savewave) {
 		writeAudioToWav(_agc_audio);
 	}
 
-	// Copy to output buffer
+	// Copy to output buffer with clamping to prevent clipping
 	for (size_t i = 0; i < _bufsize; i++) {
-		outdata[i] = static_cast<float>(_agc_audio[i]);
+		outdata[i] = std::clamp(_agc_audio[i], -1.0, 1.0);
 	}
+
 
 	// Tick all stations
 	me->tick();
@@ -429,7 +482,7 @@ int Contest::audioCallback(void *outputBuffer, void *inputBuffer,
                            unsigned int status, void *userData)
 {
 	Contest *contest = static_cast<Contest*>(userData);
-	float *outdata = static_cast<float*>(outputBuffer);
+	double *outdata = static_cast<double*>(outputBuffer);
 
 	if (status) {
 		std::cerr << "RtAudio error: " << status << std::endl;
@@ -461,7 +514,7 @@ void Contest::start()
 	unsigned int bufferFrames = _bufsize;
 
 	try {
-		rtaudio->openStream(&parameters, nullptr, RTAUDIO_FLOAT32,
+		rtaudio->openStream(&parameters, nullptr, RTAUDIO_FLOAT64,
 		                    _rate, &bufferFrames, &Contest::audioCallback,
 		                    static_cast<void*>(this), &options);
 		rtaudio->startStream();
@@ -514,7 +567,7 @@ std::tuple<int, int, int> Contest::time() const
 
 void Contest::checkDuration()
 {
-	seconds = bufcount * _bufsize / static_cast<float>(_rate);
+	seconds = bufcount * _bufsize / static_cast<double>(_rate);
 
 	if (mode == RunMode::single || mode == RunMode::pileup) {
 		if (duration < seconds / 60.0) {
@@ -568,14 +621,14 @@ void Contest::readConfig(const std::string &filename)
 		} else if (section == "Station") {
 			if (key == "call") _call = value;
 			else if (key == "wpm") _wpm = std::stoi(value);
-			else if (key == "fast") fast = std::stof(value);
-			else if (key == "slow") slow = std::stof(value);
+			else if (key == "fast") fast = std::stod(value);
+			else if (key == "slow") slow = std::stod(value);
 			else if (key == "bandwidth") _bandwidth = std::stoi(value);
-			else if (key == "pitch") _pitch = std::stof(value);
+			else if (key == "pitch") _pitch = std::stod(value);
 			else if (key == "qsk") qsk = (std::stoi(value) != 0);
-			else if (key == "qskdecaytime") qskdecaytime = std::stof(value);
+			else if (key == "qskdecaytime") qskdecaytime = std::stod(value);
 			else if (key == "rit") rit = std::stoi(value);
-			else if (key == "monitor") monitor = std::stof(value);
+			else if (key == "monitor") monitor = std::stod(value);
 			else if (key == "cwreverse") _cwreverse = (std::stoi(value) != 0);
 		} else if (section == "Conditions") {
 			if (key == "qrn") qrn = (std::stoi(value) != 0);
@@ -583,13 +636,13 @@ void Contest::readConfig(const std::string &filename)
 			else if (key == "qsb") qsb = (std::stoi(value) != 0);
 			else if (key == "qsy") qsy = (std::stoi(value) != 0);
 			else if (key == "flutter") flutter = (std::stoi(value) != 0);
-			else if (key == "flutterprob") flutterProb = std::stof(value);
+			else if (key == "flutterprob") flutterProb = std::stod(value);
 			else if (key == "lids") lids = (std::stoi(value) != 0);
 			else if (key == "activity") activity = std::stoi(value);
-			else if (key == "lidrstprob") lidRstProb = std::stof(value);
-			else if (key == "lidnrprob") lidNrProb = std::stof(value);
-			else if (key == "rptprob") rptProb = std::stof(value);
-			else if (key == "tqrm") _tqrm = std::stof(value);
+			else if (key == "lidrstprob") lidRstProb = std::stod(value);
+			else if (key == "lidnrprob") lidNrProb = std::stod(value);
+			else if (key == "rptprob") rptProb = std::stod(value);
+			else if (key == "tqrm") _tqrm = std::stod(value);
 			else if (key == "norepeats") norepeats = std::stoi(value);
 			else if (key == "longnr") longnr = std::stoi(value);
 		} else if (section == "Contest") {

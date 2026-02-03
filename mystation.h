@@ -19,12 +19,12 @@ class Contest;
 class MyStation : public station {
 public:
 	MyStation(RNG *rng, Keyer *keyer, Contest *contest,
-	          const std::string &myCall, float pitch, int wpm,
+	          const std::string &myCall, double pitch, int wpm,
 	          size_t bufsize = 512, size_t rate = 11025);
 
 	// Override base class methods
 	void processEvent(station_event evt) override;
-	const std::vector<float> &get_buffer();
+	const std::vector<double> &get_buffer();
 
 	// MyStation specific methods
 	void sendText(const std::string &msg);

@@ -60,14 +60,14 @@ public:
 	void writeConfig(const std::string &filename);
 
 	// Properties with getters/setters
-	float getTqrm() const { return _tqrm; }
-	void setTqrm(float tqrm);
+	double getTqrm() const { return _tqrm; }
+	void setTqrm(double tqrm);
 
 	int getBandwidth() const { return _bandwidth; }
 	void setBandwidth(int bandwidth);
 
-	float getPitch() const { return _pitch; }
-	void setPitch(float pitch);
+	double getPitch() const { return _pitch; }
+	void setPitch(double pitch);
 
 	std::string getCall() const { return _call; }
 	void setCall(const std::string &call);
@@ -98,25 +98,25 @@ public:
 
 	// Configuration parameters
 	int wpm;
-	float fast;
-	float slow;
-	float pitch;
+	double fast;
+	double slow;
+	double pitch;
 	bool qsk;
-	float qskdecaytime;
+	double qskdecaytime;
 	int rit;
-	float monitor;
+	double monitor;
 	bool qrn;
 	bool qrm;
 	bool qsb;
 	bool qsy;
 	bool flutter;
-	float flutterProb;
+	double flutterProb;
 	bool lids;
 	int activity;
-	float lidRstProb;
-	float lidNrProb;
-	float rptProb;
-	float tqrm;
+	double lidRstProb;
+	double lidNrProb;
+	double rptProb;
+	double tqrm;
 	int duration;
 	int norepeats;
 	int longnr;
@@ -128,7 +128,7 @@ public:
 	int fontsize;
 
 	size_t bufcount;
-	float seconds;
+	double seconds;
 
 private:
 	// Audio callback (static wrapper for RtAudio)
@@ -137,7 +137,7 @@ private:
 	                         unsigned int status, void *userData);
 
 	// Instance audio processing method
-	void getAudio(float *outdata, unsigned int nframes);
+	void getAudio(double *outdata, unsigned int nframes);
 
 	// RF gain function for QSK
 	double rfgfun(double a0, double a1);
@@ -160,19 +160,19 @@ private:
 	std::string _call;
 	int _wpm;
 	int _bandwidth;
-	float _pitch;
-	float _tqrm;
+	double _pitch;
+	double _tqrm;
 	bool _cwreverse;
 
 	// Audio processing state
-	float _qskdecayfactor;
-	float qrmProbPerBuffer;
-	float _fgain;
+	double _qskdecayfactor;
+	double qrmProbPerBuffer;
+	double _fgain;
 	double _rfg0;
 	std::vector<double> _rfg;
 	double _ritph;
 	std::vector<double> _bufindex;
-	float _extratime;
+	double _extratime;
 
 	// Pre-allocated audio buffers (avoid heap allocation in callback)
 	std::vector<std::complex<double>> _reim;

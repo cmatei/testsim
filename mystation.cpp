@@ -4,7 +4,7 @@
 #include <cmath>
 
 MyStation::MyStation(RNG *rng, Keyer *keyer, Contest *contest_,
-                     const std::string &myCall, float pitch_, int wpm_,
+                     const std::string &myCall, double pitch_, int wpm_,
                      size_t bufsize, size_t rate)
 	: station(rng, keyer, bufsize, rate), contest(contest_)
 {
@@ -194,14 +194,14 @@ void MyStation::sendNextPiece()
 	if (continuation) {
 		size_t dit = static_cast<size_t>(std::round(1.2 * rate / wpm));
 		size_t gap = word_space ? 5 * dit : 1 * dit;
-		envelope.insert(envelope.begin(), gap, 0.0f);
+		envelope.insert(envelope.begin(), gap, 0.0);
 	}
 }
 
-const std::vector<float> &MyStation::get_buffer()
+const std::vector<double> &MyStation::get_buffer()
 {
 	// Get buffer from parent class
-	const std::vector<float> &buf = station::get_buffer();
+	const std::vector<double> &buf = station::get_buffer();
 
 	// If envelope is done (empty), move to next piece
 	if (envelope.empty()) {
@@ -242,7 +242,7 @@ bool MyStation::updateCallInMessage(const std::string &call)
 
 		// Encode the new call
 		std::string encoded = keyer->Encode(lower_call);
-		std::vector<float> new_envelope = keyer->getEnvelope(encoded, wpm);
+		std::vector<double> new_envelope = keyer->getEnvelope(encoded, wpm);
 
 		// Scale by amplitude
 		for (auto &val : new_envelope) {
