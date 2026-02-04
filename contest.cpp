@@ -197,7 +197,7 @@ double Contest::rfgfun(double a0, double a1)
 	return a1 + _qskdecayfactor * (a0 - a1);
 }
 
-void Contest::getAudio(double *outdata, unsigned int nframes)
+void Contest::getAudio(float *outdata, unsigned int nframes)
 {
 	std::lock_guard<std::recursive_mutex> lock(audio_mutex);
 
@@ -323,63 +323,11 @@ void Contest::getAudio(double *outdata, unsigned int nframes)
 		_filtered[i] *= _fgain;
 	}
 
-	// Diagnostic: Check signal levels after filtering
-	static int diag_counter = 0;
-	static double max_filtered_ever = 0.0;
-	static double max_audio_ever = 0.0;
-	static double max_agc_ever = 0.0;
-
-	double max_filtered = 0.0;
-	for (size_t i = 0; i < _bufsize; i++) {
-		max_filtered = std::max(max_filtered, std::abs(_filtered[i]));
-	}
-	max_filtered_ever = std::max(max_filtered_ever, max_filtered);
-
 	// Modulate to audio frequency
 	modulator->modulate(_filtered.data(), _audio.data());
 
-	// Diagnostic: Check signal levels before AGC
-	double max_audio = 0.0;
-	for (size_t i = 0; i < _bufsize; i++) {
-		max_audio = std::max(max_audio, std::abs(_audio[i]));
-	}
-	max_audio_ever = std::max(max_audio_ever, max_audio);
-
 	// Apply AGC
 	_m5->process(_audio.data(), _agc_audio.data());
-
-	// Diagnostic: Check signal levels after AGC
-	double max_agc = 0.0;
-	int clipped_samples = 0;
-	for (size_t i = 0; i < _bufsize; i++) {
-		double abs_val = std::abs(_agc_audio[i]);
-		max_agc = std::max(max_agc, abs_val);
-		if (abs_val > 1.0) clipped_samples++;
-	}
-	max_agc_ever = std::max(max_agc_ever, max_agc);
-
-	// Log every 100 buffers when there are multiple stations
-	diag_counter++;
-	if (diag_counter % 100 == 0) {
-		int num_stations = dxCount();
-		std::cerr << "Buf " << bufcount
-		          << " Stn=" << num_stations
-		          << " Filt=" << max_filtered
-		          << " Audio=" << max_audio
-		          << " AGC=" << max_agc;
-		if (clipped_samples > 0) {
-			std::cerr << " CLIP=" << clipped_samples;
-		}
-		std::cerr << " [MaxEver: F=" << max_filtered_ever
-		          << " A=" << max_audio_ever
-		          << " G=" << max_agc_ever << "]" << std::endl;
-	}
-
-	// Warn about extreme values
-	if (max_agc > 1.5) {
-		std::cerr << "*** WARNING: AGC output exceeds 1.5: " << max_agc
-		          << " (stations=" << dxCount() << ")" << std::endl;
-	}
 
 	// Record to WAV file if enabled
 	if (savewave) {
@@ -388,7 +336,7 @@ void Contest::getAudio(double *outdata, unsigned int nframes)
 
 	// Copy to output buffer with clamping to prevent clipping
 	for (size_t i = 0; i < _bufsize; i++) {
-		outdata[i] = std::clamp(_agc_audio[i], -1.0, 1.0);
+		outdata[i] = static_cast<float>(std::clamp(_agc_audio[i], -1.0, 1.0));
 	}
 
 
@@ -482,10 +430,20 @@ int Contest::audioCallback(void *outputBuffer, void *inputBuffer,
                            unsigned int status, void *userData)
 {
 	Contest *contest = static_cast<Contest*>(userData);
-	double *outdata = static_cast<double*>(outputBuffer);
+	float *outdata = static_cast<float*>(outputBuffer);
 
 	if (status) {
 		std::cerr << "RtAudio error: " << status << std::endl;
+	}
+
+	// Check for buffer size mismatch
+	if (nBufferFrames != contest->_bufsize) {
+		static bool warned = false;
+		if (!warned) {
+			std::cerr << "ERROR: RtAudio callback nBufferFrames=" << nBufferFrames
+			          << " but Contest bufsize=" << contest->_bufsize << std::endl;
+			warned = true;
+		}
 	}
 
 	contest->getAudio(outdata, nBufferFrames);
@@ -514,9 +472,16 @@ void Contest::start()
 	unsigned int bufferFrames = _bufsize;
 
 	try {
-		rtaudio->openStream(&parameters, nullptr, RTAUDIO_FLOAT64,
+		rtaudio->openStream(&parameters, nullptr, RTAUDIO_FLOAT32,
 		                    _rate, &bufferFrames, &Contest::audioCallback,
 		                    static_cast<void*>(this), &options);
+
+		// Check if RtAudio modified our buffer size
+		if (bufferFrames != _bufsize) {
+			std::cerr << "WARNING: RtAudio changed buffer size from " << _bufsize
+			          << " to " << bufferFrames << std::endl;
+		}
+
 		rtaudio->startStream();
 
 		// Start WAV recording if enabled

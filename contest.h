@@ -137,7 +137,7 @@ private:
 	                         unsigned int status, void *userData);
 
 	// Instance audio processing method
-	void getAudio(double *outdata, unsigned int nframes);
+	void getAudio(float *outdata, unsigned int nframes);
 
 	// RF gain function for QSK
 	double rfgfun(double a0, double a1);

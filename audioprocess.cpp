@@ -189,8 +189,7 @@ void Agc::process(const double *in, double *out)
 	for (size_t i = 0; i < bufsize; i++) {
 		double g = std::max(gain[i], 1.0e-8);
 		g = maxoutnorm * (1.0 - std::exp(-g / beta)) / g;
-		// this is wrong
-		//out[i] = g * valbuf[agcmid + i];
+		// Use valbuf[i], not valbuf[agcmid + i] - Python uses valbuf[:bufsize]
 		out[i] = g * valbuf[i];
 
 		// Clamp output to [-1.0, 1.0] to prevent clipping

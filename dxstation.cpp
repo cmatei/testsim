@@ -48,10 +48,12 @@ DxStation::DxStation(RNG *rng, Keyer *keyer, CallList *callList, station *cqstn_
 	}
 
 	// Original amplitude range matching Python cwsim
-	this->amplitude = 9000.0 + 18000.0 * (1.0 + std::sin(M_PI * rng->random() - 0.5));
+	this->amplitude = 9000.0 + 18000.0 * (1.0 + std::sin(M_PI * (rng->random() - 0.5)));
 
 	// Set pitch offset from center (0 = on frequency, heard at modulator pitch)
-	double pitch_offset = std::fmod(rng->normal(0.0, 150.0), 300);
+	// Ensure minimum offset to avoid DC component (at least ~10 complete cycles per buffer)
+	double pitch_offset = rng->normal(0.0, 150.0);
+	pitch_offset = std::clamp(pitch_offset, -300.0, 300.0);
 	this->set_pitch(pitch_offset);
 
 	// Start in Copying state (listening to CQ station)
