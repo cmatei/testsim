@@ -127,6 +127,11 @@ public:
 	bool savesummary;
 	int fontsize;
 
+	// Network protocol ports (0 = disabled)
+	int winkeyer_port;
+	int cwdaemon_port;
+	int rigctl_port;
+
 	size_t bufcount;
 	double seconds;
 

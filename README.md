@@ -23,8 +23,9 @@ Instead of a built-in GUI, Contest Simulator acts as a **virtual contest radio**
 - Variable sending speeds and timing
 
 ### Logger Integration
-- cwdaemon protocol (UDP network keyer)
-- Works with TLF, xlog, CQRLog, Tucnak, and other cwdaemon-compatible loggers
+- **WinKeyer2/3** protocol (TCP) - N1MM+, Win-Test, DXLog.net, TRX-Manager
+- **cwdaemon** protocol (UDP) - TLF, xlog, CQRLog, Tucnak
+- **rigctld** protocol (TCP) - Hamlib-compatible rig control (RIT, frequency, mode)
 - Real-time CW keying from your logger
 - Speed control and inline speed changes (+/-)
 - Special character mapping for prosigns (AR, BT, SK, etc.)
@@ -60,12 +61,22 @@ make
 
 ### Run
 ```bash
-# Start Contest Simulator with cwdaemon protocol
-./testsim --protocol cwdaemon --cwdaemon-port 6789
+# WinKeyer protocol (default) - for N1MM+, Win-Test, etc.
+./testsim --winkeyer-port 7890
 
-# Configure your logger to connect to cwdaemon:
-#   Host: localhost
-#   Port: 6789
+# cwdaemon protocol - for TLF, xlog, etc.
+./testsim --cwdaemon-port 6789
+
+# Both protocols simultaneously
+./testsim --winkeyer-port 7890 --cwdaemon-port 6789
+
+# With rigctld for RIT control
+./testsim --winkeyer-port 7890 --rigctl-port 4532
+
+# Configure your logger to connect:
+#   WinKeyer: TCP localhost:7890
+#   cwdaemon: UDP localhost:6789
+#   rigctld: TCP localhost:4532 (hamlib rig model 2)
 #
 # For TLF, add to your contest config:
 #   CWDAEMON=localhost:6789
@@ -100,8 +111,11 @@ savewave=1  # Record audio to timestamped WAV files
 
 Run with config:
 ```bash
-./testsim --protocol cwdaemon --cwdaemon-port 6789 --config contest.ini
+./testsim --winkeyer-port 7890 --config contest.ini
+./testsim --cwdaemon-port 6789 --config contest.ini
 ```
+
+See **[WINKEYER_SETUP.md](WINKEYER_SETUP.md)** for detailed logger setup instructions and **[RIGCTL_PROTOCOL.md](RIGCTL_PROTOCOL.md)** for rigctld/RIT control documentation.
 
 ## Usage Tips
 
@@ -128,12 +142,16 @@ The codebase is inspired by Morse Runner (VE3NEA) and cwsim (W9CF).
 ## Documentation
 
 - **[CLAUDE.md](CLAUDE.md)** - Architecture and developer documentation
+- **[WINKEYER_SETUP.md](WINKEYER_SETUP.md)** - Logger integration guide (WinKeyer/cwdaemon)
+- **[RIGCTL_PROTOCOL.md](RIGCTL_PROTOCOL.md)** - Hamlib rigctld protocol support
 
 ## Project Status
 
 **Production Ready**: All core functionality is complete:
 - ✅ Contest simulator engine
-- ✅ cwdaemon protocol implementation
+- ✅ WinKeyer2/3 protocol implementation (TCP)
+- ✅ cwdaemon protocol implementation (UDP)
+- ✅ rigctld protocol implementation (TCP, hamlib-compatible)
 - ✅ Audio generation and mixing
 - ✅ Station lifecycle management
 - ✅ Configuration system

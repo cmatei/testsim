@@ -26,21 +26,27 @@ void print_usage(const char *prog)
 	std::cout << "Contest Simulator - Network Keyer Mode\n";
 	std::cout << "Usage: " << prog << " [options]\n\n";
 	std::cout << "Options:\n";
-	std::cout << "  --protocol <winkeyer|cwdaemon|both>  Protocol to use (default: winkeyer)\n";
-	std::cout << "  --port <port>                        TCP port for WinKeyer (default: 7890)\n";
-	std::cout << "  --cwdaemon-port <port>               UDP port for cwdaemon (default: 6789)\n";
+	std::cout << "  --winkeyer-port <port>               TCP port for WinKeyer (0=disabled)\n";
+	std::cout << "  --cwdaemon-port <port>               UDP port for cwdaemon (0=disabled)\n";
+	std::cout << "  --rigctl-port <port>                 TCP port for rigctld (0=disabled)\n";
 	std::cout << "  --winkeyer-version <2|3>             WinKeyer protocol version (default: 3)\n";
-	std::cout << "  --config <file>                      Configuration file (default: none, uses defaults)\n";
+	std::cout << "  --config <file>                      Configuration file (default: contest.ini)\n";
 	std::cout << "  --help                               Show this help\n\n";
 	std::cout << "Protocols:\n";
-	std::cout << "  winkeyer  - WinKeyer2/3 over TCP (N1MM+, Win-Test, etc.)\n";
+	std::cout << "  WinKeyer  - WinKeyer2/3 over TCP (N1MM+, Win-Test, etc.)\n";
 	std::cout << "  cwdaemon  - cwdaemon over UDP (TLF, xlog, etc.)\n";
-	std::cout << "  both      - Run both protocols simultaneously\n\n";
+	std::cout << "  rigctld   - hamlib rigctld over TCP (rig control, RIT)\n\n";
+	std::cout << "Port Configuration:\n";
+	std::cout << "  Ports can be set via command line or in contest.ini [Network] section:\n";
+	std::cout << "    winkeyer_port=7890   (0 to disable)\n";
+	std::cout << "    cwdaemon_port=6789   (0 to disable)\n";
+	std::cout << "    rigctl_port=4532     (0 to disable)\n";
+	std::cout << "  Command line arguments override config file values.\n\n";
 	std::cout << "Examples:\n";
-	std::cout << "  " << prog << " --protocol winkeyer --port 7890\n";
-	std::cout << "  " << prog << " --protocol cwdaemon --cwdaemon-port 6789\n";
-	std::cout << "  " << prog << " --protocol both --port 7890 --cwdaemon-port 6789\n";
-	std::cout << "  " << prog << " --port 7890 --config contest.ini\n\n";
+	std::cout << "  " << prog << " --winkeyer-port 7890\n";
+	std::cout << "  " << prog << " --cwdaemon-port 6789\n";
+	std::cout << "  " << prog << " --winkeyer-port 7890 --cwdaemon-port 6789 --rigctl-port 4532\n";
+	std::cout << "  " << prog << " --config contest.ini\n\n";
 	std::cout << "Audio Routing:\n";
 	std::cout << "  Configure your logger to use 'pulse' or system default audio input\n";
 	std::cout << "  The simulator will output to the default audio device\n\n";
@@ -67,9 +73,9 @@ void print_status(Contest *contest, WinKeyerServer *wk, CwdaemonServer *cw)
 
 int main(int argc, char **argv)
 {
-	std::string protocol = "winkeyer";  // Default protocol
-	int tcp_port = 7890;  // Default WinKeyer port
-	int udp_port = 6789;  // Default cwdaemon port
+	int winkeyer_port = -1;  // -1 means use config file value
+	int cwdaemon_port = -1;  // -1 means use config file value
+	int rigctl_port = -1;  // -1 means use config file value
 	int winkeyer_version = 3;  // Default WinKeyer3
 	std::string config_file;
 
@@ -79,16 +85,12 @@ int main(int argc, char **argv)
 		if (arg == "--help" || arg == "-h") {
 			print_usage(argv[0]);
 			return 0;
-		} else if (arg == "--protocol" && i + 1 < argc) {
-			protocol = argv[++i];
-			if (protocol != "winkeyer" && protocol != "cwdaemon" && protocol != "both") {
-				std::cerr << "Error: Protocol must be 'winkeyer', 'cwdaemon', or 'both'" << std::endl;
-				return 1;
-			}
-		} else if (arg == "--port" && i + 1 < argc) {
-			tcp_port = std::stoi(argv[++i]);
+		} else if (arg == "--winkeyer-port" && i + 1 < argc) {
+			winkeyer_port = std::stoi(argv[++i]);
 		} else if (arg == "--cwdaemon-port" && i + 1 < argc) {
-			udp_port = std::stoi(argv[++i]);
+			cwdaemon_port = std::stoi(argv[++i]);
+		} else if (arg == "--rigctl-port" && i + 1 < argc) {
+			rigctl_port = std::stoi(argv[++i]);
 		} else if (arg == "--winkeyer-version" && i + 1 < argc) {
 			winkeyer_version = std::stoi(argv[++i]);
 			if (winkeyer_version != 2 && winkeyer_version != 3) {
@@ -120,6 +122,19 @@ int main(int argc, char **argv)
 	Contest contest(&rng, config_file);
 	g_contest = &contest;
 
+	// Use config file port values for any not specified on command line
+	if (winkeyer_port == -1) winkeyer_port = contest.winkeyer_port;
+	if (cwdaemon_port == -1) cwdaemon_port = contest.cwdaemon_port;
+	if (rigctl_port == -1) rigctl_port = contest.rigctl_port;
+
+	// Check that at least one protocol is enabled
+	if (winkeyer_port == 0 && cwdaemon_port == 0 && rigctl_port == 0) {
+		std::cerr << "Error: No network protocols enabled!\n";
+		std::cerr << "Enable at least one protocol via command line or config file.\n";
+		std::cerr << "Use --help for usage information.\n";
+		return 1;
+	}
+
 	std::cout << "Configuration:\n";
 	std::cout << "  Call:      " << contest.getCall() << "\n";
 	std::cout << "  WPM:       " << contest.getWpm() << "\n";
@@ -140,16 +155,17 @@ int main(int argc, char **argv)
 	std::cout << "  QSB:       " << (contest.qsb ? "ON" : "OFF") << "\n";
 	std::cout << "  Duration:  " << contest.duration << " minutes\n\n";
 
-	// Create servers based on protocol selection
+	// Create servers based on port configuration (0 = disabled)
 	std::unique_ptr<WinKeyerServer> winkeyer;
 	std::unique_ptr<CwdaemonServer> cwdaemon;
+	std::unique_ptr<RigctldServer> rigctl;
 
-	if (protocol == "winkeyer" || protocol == "both") {
-		std::cout << "Starting WinKeyer" << winkeyer_version << " TCP server on port " << tcp_port << "\n";
-		winkeyer = std::make_unique<WinKeyerServer>(tcp_port, winkeyer_version);
+	if (winkeyer_port > 0) {
+		std::cout << "Starting WinKeyer" << winkeyer_version << " TCP server on port " << winkeyer_port << "\n";
+		winkeyer = std::make_unique<WinKeyerServer>(winkeyer_port, winkeyer_version);
 
 		if (!winkeyer->isOpen()) {
-			std::cerr << "\nError: Could not create TCP listener on port " << tcp_port << "\n";
+			std::cerr << "\nError: Could not create TCP listener on port " << winkeyer_port << "\n";
 			std::cerr << "Make sure the port is not already in use.\n";
 			return 1;
 		}
@@ -172,12 +188,12 @@ int main(int argc, char **argv)
 		};
 	}
 
-	if (protocol == "cwdaemon" || protocol == "both") {
-		std::cout << "Starting cwdaemon UDP server on port " << udp_port << "\n";
-		cwdaemon = std::make_unique<CwdaemonServer>(udp_port);
+	if (cwdaemon_port > 0) {
+		std::cout << "Starting cwdaemon UDP server on port " << cwdaemon_port << "\n";
+		cwdaemon = std::make_unique<CwdaemonServer>(cwdaemon_port);
 
 		if (!cwdaemon->isOpen()) {
-			std::cerr << "\nError: Could not create UDP socket on port " << udp_port << "\n";
+			std::cerr << "\nError: Could not create UDP socket on port " << cwdaemon_port << "\n";
 			std::cerr << "Make sure the port is not already in use.\n";
 			return 1;
 		}
@@ -204,6 +220,56 @@ int main(int argc, char **argv)
 		};
 	}
 
+	if (rigctl_port > 0) {
+		std::cout << "Starting rigctld TCP server on port " << rigctl_port << "\n";
+		rigctl = std::make_unique<RigctldServer>(rigctl_port);
+
+		if (!rigctl->isOpen()) {
+			std::cerr << "\nError: Could not create TCP listener on port " << rigctl_port << "\n";
+			std::cerr << "Make sure the port is not already in use.\n";
+			return 1;
+		}
+
+		// Wire up callbacks - RIT is bidirectional
+		rigctl->onGetRit = [&contest]() -> int {
+			return contest.rit;
+		};
+
+		rigctl->onSetRit = [&contest](int rit_hz) {
+			contest.rit = rit_hz;
+		};
+
+		// Other callbacks return simulated state
+		rigctl->onGetFreq = [&rigctl]() -> long long {
+			return rigctl->freq_hz;
+		};
+
+		rigctl->onGetMode = [&rigctl]() -> std::string {
+			return rigctl->mode;
+		};
+
+		rigctl->onGetPassband = [&rigctl]() -> int {
+			return rigctl->passband_hz;
+		};
+
+		rigctl->onGetVfo = [&rigctl]() -> std::string {
+			return rigctl->vfo;
+		};
+
+		rigctl->onSetFreq = [&rigctl](long long freq_hz) {
+			rigctl->freq_hz = freq_hz;
+		};
+
+		rigctl->onSetMode = [&rigctl](const std::string& mode, int passband_hz) {
+			rigctl->mode = mode;
+			rigctl->passband_hz = passband_hz;
+		};
+
+		rigctl->onSetVfo = [&rigctl](const std::string& vfo) {
+			rigctl->vfo = vfo;
+		};
+	}
+
 	// Track MyStation state for WinKeyer busy status
 	bool last_sending = contest.isSending();
 
@@ -213,10 +279,13 @@ int main(int argc, char **argv)
 
 	std::cout << "\n=== Contest Running ===\n";
 	if (winkeyer) {
-		std::cout << "WinKeyer" << winkeyer_version << " listening on: localhost:" << tcp_port << "\n";
+		std::cout << "WinKeyer" << winkeyer_version << " listening on: localhost:" << winkeyer_port << "\n";
 	}
 	if (cwdaemon) {
-		std::cout << "cwdaemon listening on: localhost:" << udp_port << "\n";
+		std::cout << "cwdaemon listening on: localhost:" << cwdaemon_port << "\n";
+	}
+	if (rigctl) {
+		std::cout << "rigctld listening on: localhost:" << rigctl_port << "\n";
 	}
 	std::cout << "Press Ctrl+C to stop\n\n";
 
@@ -229,6 +298,9 @@ int main(int argc, char **argv)
 		}
 		if (cwdaemon) {
 			cwdaemon->poll();
+		}
+		if (rigctl) {
+			rigctl->poll();
 		}
 
 		// Update busy status if MyStation state changed (WinKeyer only)

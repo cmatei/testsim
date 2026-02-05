@@ -56,22 +56,26 @@ This is a **CW (Morse code) contest simulator**. The application (Contest Simula
 1. **Start Contest Simulator:**
 ```bash
 # WinKeyer protocol (default)
-./testsim --port 7890
+./testsim --winkeyer-port 7890
 
 # cwdaemon protocol
-./testsim --protocol cwdaemon --cwdaemon-port 6789
+./testsim --cwdaemon-port 6789
 
 # Both protocols simultaneously
-./testsim --protocol both --port 7890 --cwdaemon-port 6789
+./testsim --winkeyer-port 7890 --cwdaemon-port 6789
+
+# With rigctld for RIT control
+./testsim --winkeyer-port 7890 --rigctl-port 4532
 ```
 
 2. **Configure your contest logger:**
    - **WinKeyer**: Connect via TCP to `localhost:7890` (Win-Test, DXLog.net, TRX-Manager, N1MM+ with bridge)
    - **cwdaemon**: Connect via UDP to `localhost:6789` (TLF, xlog, CQRLog, Tucnak)
+   - **rigctld**: Configure hamlib rig model 2, TCP `localhost:4532` (for RIT control)
 
 3. **Start operating!** Send CQ from your logger and work the simulated pile-up.
 
-**See WINKEYER_SETUP.md for detailed setup instructions for both protocols.**
+**See WINKEYER_SETUP.md for detailed setup instructions and RIGCTL_PROTOCOL.md for rigctld/RIT documentation.**
 
 ## Build System
 
@@ -90,7 +94,7 @@ make
 - Standard C/C++ libraries
 
 **Executable**:
-- `testsim` - Network keyer daemon (supports WinKeyer3 and cwdaemon protocols)
+- `testsim` - Network keyer daemon (supports WinKeyer3, cwdaemon, and rigctld protocols)
 
 **Note**: Qt and Marble have been completely removed from the project. This is a CLI-only application.
 
@@ -177,8 +181,19 @@ gcc -o gentables gentables.c -lm
   - UdpTransport: UDP datagram communication with recvfrom/sendto
   - Default port: 6789
   - Connectionless operation with reply support
+- **rigctld Protocol** (TCP):
+  - Implements hamlib rigctld protocol over TCP socket
+  - Allows contest loggers and other applications to control simulator as a transceiver
+  - Primary use case: RIT (Receiver Incremental Tuning) control for frequency shifts
+  - Also supports: frequency, mode, VFO, PTT queries (cosmetic except RIT)
+  - Short command format (single character) and long format (backslash-prefixed)
+  - Standard hamlib RPRT response codes for error handling
+  - TcpTransport: TCP network communication with listen/accept
+  - Default port: disabled (use --rigctl-port to enable, typically 4532)
+  - RIT bidirectionally synced with Contest class, other state internal to RigctldServer
+  - dump_state command for capability reporting
 - **Transport Abstraction**: Common interface for TCP and UDP with polymorphism
-- Both protocols can run simultaneously on different ports
+- All three protocols can run simultaneously on different ports
 
 **Contest Class** (`contest.h`, `contest.cpp`)
 - Main orchestrator that ties all components together

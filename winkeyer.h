@@ -198,4 +198,52 @@ private:
 	static constexpr unsigned char ESC = 0x1B;
 };
 
+/**
+ * RigctldServer - Implements hamlib rigctld protocol over TCP socket
+ *
+ * This class handles the hamlib rigctld protocol, allowing contest logging
+ * software and other ham radio applications to control the simulator as if it
+ * were a real transceiver. Primary use case is RIT control, but implements
+ * a minimal set of transceiver features for realism.
+ */
+class RigctldServer {
+public:
+	RigctldServer(int port);
+	~RigctldServer();
+
+	// Poll for incoming data
+	void poll();
+
+	// Callbacks for state queries (read from Contest)
+	std::function<long long()> onGetFreq;      // Hz
+	std::function<std::string()> onGetMode;    // "CW", "USB", etc.
+	std::function<int()> onGetPassband;        // Hz
+	std::function<std::string()> onGetVfo;     // "VFOA", "VFOB"
+	std::function<int()> onGetRit;             // Hz
+
+	// Callbacks for state changes (write to Contest)
+	std::function<void(long long)> onSetFreq;
+	std::function<void(const std::string&, int)> onSetMode;  // mode, passband
+	std::function<void(const std::string&)> onSetVfo;
+	std::function<void(int)> onSetRit;
+
+	// Check if connected
+	bool isOpen() const { return transport && transport->isOpen(); }
+
+	// Simulated radio state (for queries)
+	long long freq_hz;      // Default: 14074000 (20m CW)
+	std::string mode;       // Default: "CW"
+	int passband_hz;        // Default: 500
+	std::string vfo;        // Default: "VFOA"
+
+private:
+	void processCommand(const std::string &line);
+	void sendResponse(const std::string &response);
+	void sendRprt(int code);
+	void processLongCommand(const std::string &line);
+
+	std::unique_ptr<TcpTransport> transport;
+	std::string commandBuffer;
+};
+
 #endif

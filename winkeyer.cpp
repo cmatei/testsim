@@ -826,3 +826,253 @@ void CwdaemonServer::setReply(const std::string& reply)
 {
 	reply_text = reply;
 }
+
+// ===== RigctldServer Implementation =====
+
+// Hamlib error codes
+#define RIG_OK          0   // Success
+#define RIG_EINVAL     -1   // Invalid parameter
+#define RIG_ECONF      -2   // Invalid configuration
+#define RIG_ENIMPL     -4   // Function not implemented
+#define RIG_EIO        -5   // I/O error
+#define RIG_EPROTO    -10   // Protocol error
+
+RigctldServer::RigctldServer(int port)
+	: freq_hz(14074000), mode("CW"), passband_hz(500), vfo("VFOA")
+{
+	transport = std::make_unique<TcpTransport>(port);
+	std::cout << "rigctld: TCP server listening on port " << port << std::endl;
+	std::cout << "Configure your logger for hamlib rig model 2 at: localhost:" << port << std::endl;
+}
+
+RigctldServer::~RigctldServer()
+{
+}
+
+void RigctldServer::sendResponse(const std::string &response)
+{
+	if (transport && transport->isOpen()) {
+		transport->writeBytes(reinterpret_cast<const unsigned char*>(response.c_str()),
+		                      response.size());
+		transport->writeByte('\n');
+	}
+}
+
+void RigctldServer::sendRprt(int code)
+{
+	std::string response = "RPRT " + std::to_string(code);
+	sendResponse(response);
+}
+
+void RigctldServer::processLongCommand(const std::string &line)
+{
+	// Extract command name (between \ and first space or end)
+	size_t start = 1;  // Skip initial backslash
+	size_t end = line.find(' ', start);
+	if (end == std::string::npos) {
+		end = line.length();
+	}
+	std::string cmd = line.substr(start, end - start);
+	std::string args;
+	if (end < line.length()) {
+		args = line.substr(end + 1);
+	}
+
+	if (cmd == "get_freq") {
+		long long freq = onGetFreq ? onGetFreq() : freq_hz;
+		sendResponse(std::to_string(freq));
+	} else if (cmd == "set_freq") {
+		freq_hz = std::stoll(args);
+		if (onSetFreq) onSetFreq(freq_hz);
+		sendRprt(RIG_OK);
+	} else if (cmd == "get_mode") {
+		std::string m = onGetMode ? onGetMode() : mode;
+		int pb = onGetPassband ? onGetPassband() : passband_hz;
+		sendResponse(m);
+		sendResponse(std::to_string(pb));
+	} else if (cmd == "set_mode") {
+		// Parse mode and passband (e.g., "CW 500")
+		size_t space_pos = args.find(' ');
+		if (space_pos != std::string::npos) {
+			mode = args.substr(0, space_pos);
+			passband_hz = std::stoi(args.substr(space_pos + 1));
+		} else {
+			mode = args;
+		}
+		if (onSetMode) onSetMode(mode, passband_hz);
+		sendRprt(RIG_OK);
+	} else if (cmd == "get_vfo") {
+		std::string v = onGetVfo ? onGetVfo() : vfo;
+		sendResponse(v);
+	} else if (cmd == "set_vfo") {
+		vfo = args;
+		if (onSetVfo) onSetVfo(vfo);
+		sendRprt(RIG_OK);
+	} else if (cmd == "get_rit") {
+		int rit = onGetRit ? onGetRit() : 0;
+		sendResponse(std::to_string(rit));
+	} else if (cmd == "set_rit") {
+		int rit = std::stoi(args);
+		if (onSetRit) onSetRit(rit);
+		sendRprt(RIG_OK);
+	} else if (cmd == "dump_state") {
+		// Minimal dump_state response
+		sendResponse("0");  // Protocol version
+		sendResponse("2");  // Model (generic Netrigctl)
+		sendResponse("2");  // ITU region
+		sendResponse("150000.000000 30000000.000000 0x1ff -1 -1 0x10000003 0x3");  // RX range
+		sendResponse("150000.000000 30000000.000000 0x1ff 5000 100000 0x10000003 0x3");  // TX range
+		sendResponse("0 0 0 0 0 0 0");  // End of ranges
+		sendResponse("0 0");  // Tuning steps (end marker)
+		sendResponse("0 0");  // Filters (end marker)
+		sendResponse("0");  // Max RIT
+		sendResponse("0");  // Max XIT
+		sendResponse("0");  // Max IF shift
+		sendResponse("0");  // Announces
+		sendResponse("0 0");  // Preamp (none)
+		sendResponse("0 0");  // Attenuator (none)
+		sendResponse("0x3effffff");  // Has get functions
+		sendResponse("0x3effffff");  // Has set functions
+		sendResponse("0x0");  // Has get level
+		sendResponse("0x0");  // Has set level
+		sendResponse("0x0");  // Has get parm
+		sendResponse("0x0");  // Has set parm
+		sendRprt(RIG_OK);
+	} else {
+		// Unknown command
+		sendRprt(RIG_ENIMPL);
+	}
+}
+
+void RigctldServer::processCommand(const std::string &line)
+{
+	if (line.empty()) return;
+
+	// Long command (starts with backslash)
+	if (line[0] == '\\') {
+		processLongCommand(line);
+		return;
+	}
+
+	// Short command (single character)
+	char cmd = line[0];
+	std::string args;
+	if (line.length() > 2) {
+		args = line.substr(2);  // Skip command and space
+	}
+
+	switch (cmd) {
+		case 'f': {  // get_freq
+			long long freq = onGetFreq ? onGetFreq() : freq_hz;
+			sendResponse(std::to_string(freq));
+			break;
+		}
+
+		case 'F': {  // set_freq
+			freq_hz = std::stoll(args);
+			if (onSetFreq) onSetFreq(freq_hz);
+			sendRprt(RIG_OK);
+			break;
+		}
+
+		case 'm': {  // get_mode
+			std::string m = onGetMode ? onGetMode() : mode;
+			int pb = onGetPassband ? onGetPassband() : passband_hz;
+			sendResponse(m);
+			sendResponse(std::to_string(pb));
+			break;
+		}
+
+		case 'M': {  // set_mode
+			// Parse mode and passband (e.g., "CW 500")
+			size_t space_pos = args.find(' ');
+			if (space_pos != std::string::npos) {
+				mode = args.substr(0, space_pos);
+				passband_hz = std::stoi(args.substr(space_pos + 1));
+			} else {
+				mode = args;
+			}
+			if (onSetMode) onSetMode(mode, passband_hz);
+			sendRprt(RIG_OK);
+			break;
+		}
+
+		case 'v': {  // get_vfo
+			std::string v = onGetVfo ? onGetVfo() : vfo;
+			sendResponse(v);
+			break;
+		}
+
+		case 'V': {  // set_vfo
+			vfo = args;
+			if (onSetVfo) onSetVfo(vfo);
+			sendRprt(RIG_OK);
+			break;
+		}
+
+		case 'j': {  // get_rit
+			int rit = onGetRit ? onGetRit() : 0;
+			sendResponse(std::to_string(rit));
+			break;
+		}
+
+		case 'J': {  // set_rit
+			int rit = std::stoi(args);
+			if (onSetRit) onSetRit(rit);
+			sendRprt(RIG_OK);
+			break;
+		}
+
+		case 't': {  // get_ptt (not implemented, always return RX)
+			sendResponse("0");
+			break;
+		}
+
+		case 'T': {  // set_ptt (not implemented)
+			sendRprt(RIG_OK);
+			break;
+		}
+
+		case 's': {  // get_status (not implemented)
+			sendResponse("0");
+			break;
+		}
+
+		case 'q': {  // quit
+			sendRprt(RIG_OK);
+			// Note: Don't call transport->close() here as it would close the
+			// listening socket. The client disconnect will be handled automatically
+			// when the client closes its end of the connection.
+			break;
+		}
+
+		default: {
+			// Unknown command
+			sendRprt(RIG_EINVAL);
+			break;
+		}
+	}
+}
+
+void RigctldServer::poll()
+{
+	if (!transport || !transport->isOpen()) return;
+
+	// Poll for new connections
+	transport->pollConnections();
+
+	// Read incoming bytes and accumulate into command buffer
+	int byte;
+	while ((byte = transport->readByte()) >= 0) {
+		if (byte == '\n' || byte == '\r') {
+			// End of command - process it
+			if (!commandBuffer.empty()) {
+				processCommand(commandBuffer);
+				commandBuffer.clear();
+			}
+		} else if (byte >= 32 && byte < 127) {
+			// Printable ASCII character
+			commandBuffer += static_cast<char>(byte);
+		}
+	}
+}

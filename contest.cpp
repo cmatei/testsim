@@ -16,56 +16,58 @@ Contest::Contest(RNG *rng, const std::string &inifile)
 	  _rfg0(1.0), _ritph(0.0), _extratime(0.0),
 	  _samples_written(0)
 {
+	// Set default configuration (always set defaults first)
+	_rate = 44100;
+	_bufsize = 2048;
+	_call = "P55CF";
+	_wpm = 40;
+	fast = 1.1;
+	slow = 0.9;
+	_bandwidth = 500;
+	_pitch = 500;
+	qsk = true;
+	qskdecaytime = 0.030;
+	rit = 0;
+	monitor = 0.1;
+	qrn = true;
+	qrm = true;
+	qsb = true;
+	qsy = true;
+	flutter = true;
+	flutterProb = 0.3;
+	lids = true;
+	activity = 4;
+	lidRstProb = 0.03;
+	lidNrProb = 0.1;
+	rptProb = 0.1;
+	_tqrm = 240;
+	duration = 60;
+	norepeats = 0;
+	longnr = 0;
+	mode = RunMode::pileup;
+	_cwreverse = false;
+	savewave = false;
+	saveini = true;
+	savesummary = true;
+	fontsize = 12;
+
+	// Network ports (0 = disabled)
+	winkeyer_port = 7890;
+	cwdaemon_port = 0;
+	rigctl_port = 0;
+
 	// Try to read config file (default to contest.ini if not specified)
+	// Config file values will override defaults
 	std::string config_file = inifile.empty() ? "contest.ini" : inifile;
-	bool config_loaded = false;
 
 	try {
 		readConfig(config_file);
-		config_loaded = true;
 		std::cout << "Loaded configuration from: " << config_file << std::endl;
 	} catch (...) {
 		// Fall through to defaults if file doesn't exist or has errors
 		if (!inifile.empty()) {
 			std::cerr << "Warning: Could not load " << config_file << ", using defaults" << std::endl;
 		}
-	}
-
-	if (!config_loaded) {
-		// Default configuration
-		_rate = 44100;
-		_bufsize = 2048;
-		_call = "P55CF";
-		_wpm = 40;
-		fast = 1.1;
-		slow = 0.9;
-		_bandwidth = 500;
-		_pitch = 500;
-		qsk = true;
-		qskdecaytime = 0.030;
-		rit = 0;
-		monitor = 0.1;
-		qrn = true;
-		qrm = true;
-		qsb = true;
-		qsy = true;
-		flutter = true;
-		flutterProb = 0.3;
-		lids = true;
-		activity = 4;
-		lidRstProb = 0.03;
-		lidNrProb = 0.1;
-		rptProb = 0.1;
-		_tqrm = 240;
-		duration = 60;
-		norepeats = 0;
-		longnr = 0;
-		mode = RunMode::pileup;
-		_cwreverse = false;
-		savewave = false;
-		saveini = true;
-		savesummary = true;
-		fontsize = 12;
 	}
 
 	// Initialize audio processing components
@@ -625,6 +627,10 @@ void Contest::readConfig(const std::string &filename)
 			else if (key == "savesummary") savesummary = (std::stoi(value) != 0);
 		} else if (section == "Appearance") {
 			if (key == "fontsize") fontsize = std::stoi(value);
+		} else if (section == "Network") {
+			if (key == "winkeyer_port") winkeyer_port = std::stoi(value);
+			else if (key == "cwdaemon_port") cwdaemon_port = std::stoi(value);
+			else if (key == "rigctl_port") rigctl_port = std::stoi(value);
 		}
 	}
 }
@@ -685,7 +691,12 @@ void Contest::writeConfig(const std::string &filename)
 	file << "\n";
 	file << "savewave=" << (savewave ? 1 : 0) << "\n";
 	file << "saveini=" << (saveini ? 1 : 0) << "\n";
-	file << "savesummary=" << (savesummary ? 1 : 0) << "\n";
+	file << "savesummary=" << (savesummary ? 1 : 0) << "\n\n";
+
+	file << "[Network]\n";
+	file << "winkeyer_port=" << winkeyer_port << "\n";
+	file << "cwdaemon_port=" << cwdaemon_port << "\n";
+	file << "rigctl_port=" << rigctl_port << "\n";
 }
 
 // WAV recording implementation
