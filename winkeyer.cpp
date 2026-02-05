@@ -96,7 +96,7 @@ bool TcpTransport::createListener(int port)
 		return false;
 	}
 
-	std::cout << "WinKeyer: TCP server listening on port " << port << std::endl;
+	std::cout << "TCP: server listening on port " << port << std::endl;
 	std::cout << "Configure your logger to connect to: localhost:" << port << std::endl;
 	return true;
 }
@@ -113,7 +113,7 @@ void TcpTransport::pollConnections()
 	if (new_fd >= 0) {
 		// Close existing client if any
 		if (client_fd >= 0) {
-			std::cout << "WinKeyer: Closing existing client connection" << std::endl;
+			std::cout << "TCP: Closing existing client connection" << std::endl;
 			closeClient();
 		}
 
@@ -124,7 +124,7 @@ void TcpTransport::pollConnections()
 		client_fd = new_fd;
 		char client_ip[INET_ADDRSTRLEN];
 		inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-		std::cout << "WinKeyer: Client connected from " << client_ip
+		std::cout << "TCP: Client connected from " << client_ip
 		          << ":" << ntohs(client_addr.sin_port) << std::endl;
 	}
 }
@@ -134,7 +134,7 @@ void TcpTransport::closeClient()
 	if (client_fd >= 0) {
 		::close(client_fd);
 		client_fd = -1;
-		std::cout << "WinKeyer: Client disconnected" << std::endl;
+		std::cout << "TCP: Client disconnected" << std::endl;
 	}
 }
 
@@ -160,7 +160,7 @@ int TcpTransport::readByte()
 		closeClient();
 	} else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
 		// Error (not just "no data available")
-		std::cerr << "WinKeyer: Read error: " << strerror(errno) << std::endl;
+		std::cerr << "TCP: Read error: " << strerror(errno) << std::endl;
 		closeClient();
 	}
 	return -1;

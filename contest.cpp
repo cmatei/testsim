@@ -52,7 +52,7 @@ Contest::Contest(RNG *rng, const std::string &inifile)
 	fontsize = 12;
 
 	// Network ports (0 = disabled)
-	winkeyer_port = 7890;
+	winkeyer_port = 0;
 	cwdaemon_port = 0;
 	rigctl_port = 0;
 
