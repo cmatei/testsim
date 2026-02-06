@@ -131,6 +131,7 @@ public:
 	int winkeyer_port;
 	int cwdaemon_port;
 	int rigctl_port;
+	bool rigctl_verbose;
 
 	size_t bufcount;
 	double seconds;

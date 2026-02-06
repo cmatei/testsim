@@ -55,6 +55,7 @@ Contest::Contest(RNG *rng, const std::string &inifile)
 	winkeyer_port = 0;
 	cwdaemon_port = 0;
 	rigctl_port = 0;
+	rigctl_verbose = false;
 
 	// Try to read config file (default to contest.ini if not specified)
 	// Config file values will override defaults
@@ -631,6 +632,7 @@ void Contest::readConfig(const std::string &filename)
 			if (key == "winkeyer_port") winkeyer_port = std::stoi(value);
 			else if (key == "cwdaemon_port") cwdaemon_port = std::stoi(value);
 			else if (key == "rigctl_port") rigctl_port = std::stoi(value);
+			else if (key == "rigctl_verbose") rigctl_verbose = (std::stoi(value) != 0);
 		}
 	}
 }
@@ -697,6 +699,7 @@ void Contest::writeConfig(const std::string &filename)
 	file << "winkeyer_port=" << winkeyer_port << "\n";
 	file << "cwdaemon_port=" << cwdaemon_port << "\n";
 	file << "rigctl_port=" << rigctl_port << "\n";
+	file << "rigctl_verbose=" << (rigctl_verbose ? 1 : 0) << "\n";
 }
 
 // WAV recording implementation

@@ -208,11 +208,14 @@ private:
  */
 class RigctldServer {
 public:
-	RigctldServer(int port);
+	RigctldServer(int port, bool verbose = false);
 	~RigctldServer();
 
 	// Poll for incoming data
 	void poll();
+
+	// Enable/disable verbose logging
+	void setVerbose(bool verbose) { _verbose = verbose; }
 
 	// Callbacks for state queries (read from Contest)
 	std::function<long long()> onGetFreq;      // Hz
@@ -244,6 +247,7 @@ private:
 
 	std::unique_ptr<TcpTransport> transport;
 	std::string commandBuffer;
+	bool _verbose;
 };
 
 #endif

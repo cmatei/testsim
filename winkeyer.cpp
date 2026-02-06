@@ -169,14 +169,14 @@ int TcpTransport::readByte()
 void TcpTransport::writeByte(unsigned char byte)
 {
 	if (client_fd >= 0) {
-		send(client_fd, &byte, 1, 0);
+		send(client_fd, &byte, 1, MSG_DONTWAIT);
 	}
 }
 
 void TcpTransport::writeBytes(const unsigned char *data, size_t len)
 {
 	if (client_fd >= 0) {
-		send(client_fd, data, len, 0);
+		send(client_fd, data, len, MSG_DONTWAIT);
 	}
 }
 
@@ -279,7 +279,7 @@ int UdpTransport::readByte()
 void UdpTransport::writeByte(unsigned char byte)
 {
 	if (socket_fd >= 0 && has_client) {
-		sendto(socket_fd, &byte, 1, 0,
+		sendto(socket_fd, &byte, 1, MSG_DONTWAIT,
 		       (struct sockaddr*)&client_addr, client_addr_len);
 	}
 }
@@ -287,7 +287,7 @@ void UdpTransport::writeByte(unsigned char byte)
 void UdpTransport::writeBytes(const unsigned char *data, size_t len)
 {
 	if (socket_fd >= 0 && has_client) {
-		sendto(socket_fd, data, len, 0,
+		sendto(socket_fd, data, len, MSG_DONTWAIT,
 		       (struct sockaddr*)&client_addr, client_addr_len);
 	}
 }
@@ -837,12 +837,15 @@ void CwdaemonServer::setReply(const std::string& reply)
 #define RIG_EIO        -5   // I/O error
 #define RIG_EPROTO    -10   // Protocol error
 
-RigctldServer::RigctldServer(int port)
-	: freq_hz(14074000), mode("CW"), passband_hz(500), vfo("VFOA")
+RigctldServer::RigctldServer(int port, bool verbose)
+	: freq_hz(14074000), mode("CW"), passband_hz(500), vfo("VFOA"), _verbose(verbose)
 {
 	transport = std::make_unique<TcpTransport>(port);
 	std::cout << "rigctld: TCP server listening on port " << port << std::endl;
 	std::cout << "Configure your logger for hamlib rig model 2 at: localhost:" << port << std::endl;
+	if (_verbose) {
+		std::cout << "rigctld: Verbose logging enabled" << std::endl;
+	}
 }
 
 RigctldServer::~RigctldServer()
@@ -851,6 +854,9 @@ RigctldServer::~RigctldServer()
 
 void RigctldServer::sendResponse(const std::string &response)
 {
+	if (_verbose) {
+		std::cout << "rigctld: >> " << response << std::endl;
+	}
 	if (transport && transport->isOpen()) {
 		transport->writeBytes(reinterpret_cast<const unsigned char*>(response.c_str()),
 		                      response.size());
@@ -915,18 +921,22 @@ void RigctldServer::processLongCommand(const std::string &line)
 		int rit = std::stoi(args);
 		if (onSetRit) onSetRit(rit);
 		sendRprt(RIG_OK);
+	} else if (cmd == "get_lock_mode") {
+		sendResponse("0");  // 0 = unlocked
+		sendResponse("");
 	} else if (cmd == "dump_state") {
-		// Minimal dump_state response
-		sendResponse("0");  // Protocol version
+		// Minimal dump_state response matching real rigctld format
+		sendResponse("1");  // Protocol version (1 for newer hamlib)
 		sendResponse("2");  // Model (generic Netrigctl)
 		sendResponse("2");  // ITU region
 		sendResponse("150000.000000 30000000.000000 0x1ff -1 -1 0x10000003 0x3");  // RX range
+		sendResponse("0 0 0 0 0 0 0");  // End of RX ranges
 		sendResponse("150000.000000 30000000.000000 0x1ff 5000 100000 0x10000003 0x3");  // TX range
-		sendResponse("0 0 0 0 0 0 0");  // End of ranges
+		sendResponse("0 0 0 0 0 0 0");  // End of TX ranges
 		sendResponse("0 0");  // Tuning steps (end marker)
 		sendResponse("0 0");  // Filters (end marker)
-		sendResponse("0");  // Max RIT
-		sendResponse("0");  // Max XIT
+		sendResponse("9999");  // Max RIT
+		sendResponse("9999");  // Max XIT
 		sendResponse("0");  // Max IF shift
 		sendResponse("0");  // Announces
 		sendResponse("0 0");  // Preamp (none)
@@ -937,7 +947,18 @@ void RigctldServer::processLongCommand(const std::string &line)
 		sendResponse("0x0");  // Has set level
 		sendResponse("0x0");  // Has get parm
 		sendResponse("0x0");  // Has set parm
-		sendRprt(RIG_OK);
+		// Key-value pairs that hamlib expects
+		sendResponse("vfo_ops=0x0");
+		sendResponse("ptt_type=0x1");
+		sendResponse("targetable_vfo=0x0");
+		sendResponse("has_set_vfo=1");
+		sendResponse("has_get_vfo=1");
+		sendResponse("has_set_freq=1");
+		sendResponse("has_get_freq=1");
+		sendResponse("timeout=1000");
+		sendResponse("rig_model=2");
+		sendResponse("rigctld_version=Hamlib 4.5 Contest Simulator");
+		sendResponse("done");  // End marker
 	} else {
 		// Unknown command
 		sendRprt(RIG_ENIMPL);
@@ -947,6 +968,10 @@ void RigctldServer::processLongCommand(const std::string &line)
 void RigctldServer::processCommand(const std::string &line)
 {
 	if (line.empty()) return;
+
+	if (_verbose) {
+		std::cout << "rigctld: << " << line << std::endl;
+	}
 
 	// Long command (starts with backslash)
 	if (line[0] == '\\') {

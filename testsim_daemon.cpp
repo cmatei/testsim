@@ -29,6 +29,7 @@ void print_usage(const char *prog)
 	std::cout << "  --winkeyer-port <port>               TCP port for WinKeyer (0=disabled)\n";
 	std::cout << "  --cwdaemon-port <port>               UDP port for cwdaemon (0=disabled)\n";
 	std::cout << "  --rigctl-port <port>                 TCP port for rigctld (0=disabled)\n";
+	std::cout << "  --rigctl-verbose                     Enable verbose logging for rigctld\n";
 	std::cout << "  --winkeyer-version <2|3>             WinKeyer protocol version (default: 3)\n";
 	std::cout << "  --config <file>                      Configuration file (default: contest.ini)\n";
 	std::cout << "  --help                               Show this help\n\n";
@@ -76,6 +77,8 @@ int main(int argc, char **argv)
 	int winkeyer_port = -1;  // -1 means use config file value
 	int cwdaemon_port = -1;  // -1 means use config file value
 	int rigctl_port = -1;  // -1 means use config file value
+	bool rigctl_verbose = false;
+	bool rigctl_verbose_set = false;  // Track if set via command line
 	int winkeyer_version = 3;  // Default WinKeyer3
 	std::string config_file;
 
@@ -91,6 +94,9 @@ int main(int argc, char **argv)
 			cwdaemon_port = std::stoi(argv[++i]);
 		} else if (arg == "--rigctl-port" && i + 1 < argc) {
 			rigctl_port = std::stoi(argv[++i]);
+		} else if (arg == "--rigctl-verbose") {
+			rigctl_verbose = true;
+			rigctl_verbose_set = true;
 		} else if (arg == "--winkeyer-version" && i + 1 < argc) {
 			winkeyer_version = std::stoi(argv[++i]);
 			if (winkeyer_version != 2 && winkeyer_version != 3) {
@@ -126,6 +132,7 @@ int main(int argc, char **argv)
 	if (winkeyer_port == -1) winkeyer_port = contest.winkeyer_port;
 	if (cwdaemon_port == -1) cwdaemon_port = contest.cwdaemon_port;
 	if (rigctl_port == -1) rigctl_port = contest.rigctl_port;
+	if (!rigctl_verbose_set) rigctl_verbose = contest.rigctl_verbose;
 
 	// Check that at least one protocol is enabled
 	if (winkeyer_port == 0 && cwdaemon_port == 0 && rigctl_port == 0) {
@@ -222,7 +229,7 @@ int main(int argc, char **argv)
 
 	if (rigctl_port > 0) {
 		std::cout << "Starting rigctld TCP server on port " << rigctl_port << "\n";
-		rigctl = std::make_unique<RigctldServer>(rigctl_port);
+		rigctl = std::make_unique<RigctldServer>(rigctl_port, rigctl_verbose);
 
 		if (!rigctl->isOpen()) {
 			std::cerr << "\nError: Could not create TCP listener on port " << rigctl_port << "\n";
